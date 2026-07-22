@@ -1,0 +1,19 @@
+[project]
+name = "documentation-helper"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "certifi>=2026.6.17",
+    "google-api-core>=2.31.0",
+    "langchain-qdrant>=1.1.0",
+    "langchain-tavily>=0.2.18",
+    "qdrant-client>=1.18.0",
+    "tavily>=1.1.0",
+    "tenacity>=9.1.4",
+]
+
+
+[tool.uv]
+environments = ["sys_platform == 'win32'"]
