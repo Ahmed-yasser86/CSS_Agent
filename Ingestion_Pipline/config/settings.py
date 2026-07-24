@@ -12,6 +12,10 @@ load_dotenv()
 DEFAULT_EMBEDDING_MODEL = "gemini-embedding-2-preview"
 DEFAULT_CHAT_MODEL = "gemini-3.1-flash-lite"
 DEFAULT_CHAT_MODEL_PROVIDER = "google_genai"
+# DEFAULT_CHAT_MODEL = "gpt-4o-mini"
+# DEFAULT_CHAT_MODEL_PROVIDER = "openai"
+# DEFAULT_CHAT_MODEL = "deepseek/deepseek-chat-v3.1"
+# DEFAULT_CHAT_MODEL_PROVIDER = "openai"
 DEFAULT_COLLECTION_NAME = "DocumentHelper"
 DEFAULT_SCRAPING_URL = "https://docs.langchain.com"
 DEFAULT_MAX_TOKENS_PER_MINUTE = 30000
