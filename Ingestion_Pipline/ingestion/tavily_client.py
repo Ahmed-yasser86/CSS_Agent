@@ -6,8 +6,8 @@ from langchain_tavily import TavilyCrawl, TavilyExtract, TavilyMap
 from rich.console import Console
 from rich.panel import Panel
 
-from config.settings import DEFAULT_SCRAPING_URL, IngestionSettings
-from infra.retry_policies import url_extraction_retry
+from Ingestion_Pipline.config.settings import DEFAULT_SCRAPING_URL, IngestionSettings
+from Ingestion_Pipline.infra.retry_policies import url_extraction_retry
 
 console = Console()
 

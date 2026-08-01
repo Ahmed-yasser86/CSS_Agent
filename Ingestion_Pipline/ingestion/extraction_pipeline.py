@@ -6,7 +6,7 @@ from langchain_core.documents import Document
 from langchain_tavily import TavilyExtract, TavilyMap
 from rich.console import Console
 
-from config.settings import DEFAULT_URL_CHUNK_SIZE, IngestionSettings
+from Ingestion_Pipline.config.settings import DEFAULT_URL_CHUNK_SIZE, IngestionSettings
 from ingestion.chunking import build_documents, chunk_urls
 from ingestion.tavily_client import extract_urls, get_site_urls
 

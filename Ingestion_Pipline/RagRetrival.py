@@ -2,8 +2,8 @@ from __future__ import annotations
 from dotenv import load_dotenv
 from Ingestion_Pipline.config.settings import ChatModelSettings, DEFAULT_COLLECTION_NAME, EmbeddingSettings
 from Ingestion_Pipline.infra.embeddings import build_embeddings
-from infra.vector_store import get_vector_db as _get_vector_db
-from retrieval.retrive import retive_query
+from Ingestion_Pipline.infra.vector_store import get_vector_db as _get_vector_db
+from Ingestion_Pipline.retrieval.retrive import retive_query
 load_dotenv()
 
 COLLECTION_NAME = DEFAULT_COLLECTION_NAME

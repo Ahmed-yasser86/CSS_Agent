@@ -8,9 +8,9 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.models import Distance, VectorParams
 from langchain_qdrant import QdrantVectorStore
 
-from config.settings import DEFAULT_COLLECTION_NAME, QdrantSettings
-from infra.retry_policies import document_add_retry, vector_dimension_retry
-from utils.logger import log_error, log_info, log_success
+from Ingestion_Pipline.config.settings import DEFAULT_COLLECTION_NAME, QdrantSettings
+from Ingestion_Pipline.infra.retry_policies import document_add_retry, vector_dimension_retry
+from Ingestion_Pipline.utils.logger import log_error, log_info, log_success
 
 
 @vector_dimension_retry()

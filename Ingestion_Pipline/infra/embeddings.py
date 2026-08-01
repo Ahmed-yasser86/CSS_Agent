@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
-from config.settings import DEFAULT_EMBEDDING_MODEL, EmbeddingSettings
+from Ingestion_Pipline.config.settings import DEFAULT_EMBEDDING_MODEL, EmbeddingSettings
 
 
 def build_embeddings(

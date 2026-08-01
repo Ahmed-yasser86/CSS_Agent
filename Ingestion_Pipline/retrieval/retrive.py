@@ -1,4 +1,4 @@
-from infra.vector_store import get_vector_db as get_vector_db
+from Ingestion_Pipline.infra.vector_store import get_vector_db as get_vector_db
 
 
 

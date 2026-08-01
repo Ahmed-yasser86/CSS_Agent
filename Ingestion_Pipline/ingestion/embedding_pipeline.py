@@ -6,9 +6,9 @@ from langchain_core.documents import Document
 from langchain_qdrant import QdrantVectorStore
 from rich.console import Console
 
-from config.settings import DEFAULT_EMBED_BATCH_SIZE, DEFAULT_EMBED_SEMAPHORE_LIMIT
-from infra.rate_limiter import TokenRateLimiter
-from infra.vector_store import add_documents_with_retry
+from Ingestion_Pipline.config.settings import DEFAULT_EMBED_BATCH_SIZE, DEFAULT_EMBED_SEMAPHORE_LIMIT
+from Ingestion_Pipline.infra.rate_limiter import TokenRateLimiter
+from Ingestion_Pipline.infra.vector_store import add_documents_with_retry
 from utils.logger import log_error
 
 console = Console()

@@ -7,7 +7,7 @@ from qdrant_client.models import Distance
 from rich.console import Console
 from rich.panel import Panel
 
-from config.settings import (
+from Ingestion_Pipline.config.settings import (
     DEFAULT_COLLECTION_NAME,
     DEFAULT_EMBED_BATCH_SIZE,
     DEFAULT_EMBED_SEMAPHORE_LIMIT,
@@ -17,9 +17,9 @@ from config.settings import (
     RateLimiterSettings,
     configure_ssl,
 )
-from infra.embeddings import build_embeddings
-from infra.rate_limiter import TokenRateLimiter
-from infra.vector_store import (
+from Ingestion_Pipline.infra.embeddings import build_embeddings
+from Ingestion_Pipline.infra.rate_limiter import TokenRateLimiter
+from Ingestion_Pipline.infra.vector_store import (
     add_documents_with_retry,
     create_empty_collection,
     create_vector_db_with_docs,

@@ -1,7 +1,7 @@
 from typing import Any, Dict
 
-from Generate import generate_chain
-from state import GraphState
+from Retrival_Pipline.Graph.Chains.Generate import generate_chain
+from Retrival_Pipline.Graph.state import GraphState
 
 
 def generate(state: GraphState) -> Dict[str, Any]:

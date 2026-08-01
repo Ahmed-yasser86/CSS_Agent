@@ -7,7 +7,7 @@ import tiktoken
 from langchain_core.documents import Document
 from rich.console import Console
 
-from config.settings import DEFAULT_MAX_TOKENS_PER_MINUTE, DEFAULT_RATE_LIMIT_ENCODING
+from Ingestion_Pipline.config.settings import DEFAULT_MAX_TOKENS_PER_MINUTE, DEFAULT_RATE_LIMIT_ENCODING
 
 console = Console()
 

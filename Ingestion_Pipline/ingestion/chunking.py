@@ -4,7 +4,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from rich.console import Console
 
-from config.settings import (
+from Ingestion_Pipline.config.settings import (
     DEFAULT_CHUNK_OVERLAP,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_TEXT_SPLITTER_ENCODING,

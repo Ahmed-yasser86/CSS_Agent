@@ -1,14 +1,17 @@
 from dotenv import load_dotenv
-from langgraph.graph import END, StateGraph  , START
-from state import GraphState
-from const import GENERATE, GRADE_DOCUMENTS, RETRIEVE, WEBSEARCH
-from Nodes.GradeDocument import grade_documents
-from Nodes.Retrive import retrieve
-from Nodes.GenerateNode import generate
-from Nodes.web_search import websearch
-from answer_grader import answer_grader
-from hallucination_grader import hallucination_grader
-from router import question_router
+from langgraph.graph import END, StateGraph
+from langgraph.checkpoint.memory import MemorySaver
+
+from Retrival_Pipline.Graph.state import GraphState
+from Retrival_Pipline.Graph.const import GENERATE, GRADE_DOCUMENTS, RETRIEVE, WEBSEARCH
+from Retrival_Pipline.Graph.Nodes.GradeDocument import grade_documents
+from Retrival_Pipline.Graph.Nodes.Retrive import retrieve
+from Retrival_Pipline.Graph.Nodes.GenerateNode import generate
+from Retrival_Pipline.Graph.Nodes.web_search import websearch
+from Retrival_Pipline.Graph.Chains.answer_grader import answer_grader
+from Retrival_Pipline.Graph.Chains.hallucination_grader import hallucination_grader
+from Retrival_Pipline.Graph.Chains.router import question_router
+
 load_dotenv()
 
 
@@ -112,6 +115,11 @@ workflow.add_conditional_edges(
     },
 )
 
+memory = MemorySaver()
+
+#app = workflow.compile(checkpointer=memory, interrupt_after=["websearch"])
+
 app = workflow.compile()
+
 
 app.get_graph().draw_mermaid_png(output_file_path="graph.png")
