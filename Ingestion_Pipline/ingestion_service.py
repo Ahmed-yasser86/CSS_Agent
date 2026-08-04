@@ -9,6 +9,8 @@ from rich.panel import Panel
 
 from Ingestion_Pipline.config.settings import (
     DEFAULT_COLLECTION_NAME,
+    DEFAULT_CHUNK_OVERLAP,
+    DEFAULT_CHUNK_SIZE,
     DEFAULT_EMBED_BATCH_SIZE,
     DEFAULT_EMBED_SEMAPHORE_LIMIT,
     DEFAULT_SCRAPING_URL,
@@ -28,7 +30,7 @@ from Ingestion_Pipline.infra.vector_store import (
 )
 from ingestion.chunking import build_documents, split_text
 from ingestion.chunking import chunk_urls as _chunk_urls
-from ingestion.embedding_pipeline import embed_documents_in_batches, process_batch
+from ingestion.embedding_pipeline import embed_documents_in_batches, ResilientEmbeddingPipeline
 from ingestion.extraction_pipeline import extract_all_batches, retrieve_all_docs
 from ingestion.tavily_client import (
     build_tavily_crawl,
@@ -72,7 +74,13 @@ async def ProcessBatch(
     batch,
     batch_num: int,
 ):
-    return await process_batch(vector_store, batch, batch_num, semaphore, limiter)
+    pipeline = ResilientEmbeddingPipeline(
+        batch_size=_ingestion_settings.embed_batch_size,
+        semaphore_limit=_ingestion_settings.embed_semaphore_limit,
+        token_rate_limiter=limiter,
+    )
+    await pipeline.start_worker()
+    return await pipeline.embed_documents(vector_store, batch, request_id=f"batch_{batch_num}")
 
 
 def get_vector_size(embedding) -> int:
@@ -155,7 +163,7 @@ async def EmbedDocumentsToVectoreDb(urls:list[list[str]],Collection_Name):
       ## this extract docs from supplied urls
        result = await ExtractAllBatches(urls)
        docs = BuildDocuments(result)
-       texts = SplitText(docs,250,40)
+       texts = SplitText(docs, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP)
        vdb = await createEmptyCollection(embeddings, Collection_Name)
        Batchingresult = await EmbedDocumentsInBatches(vdb, texts)
        return Batchingresult

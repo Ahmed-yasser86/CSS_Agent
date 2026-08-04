@@ -2,124 +2,158 @@ from dotenv import load_dotenv
 from langgraph.graph import END, StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
-from Retrival_Pipline.Graph.state import GraphState
-from Retrival_Pipline.Graph.const import GENERATE, GRADE_DOCUMENTS, RETRIEVE, WEBSEARCH
-from Retrival_Pipline.Graph.Nodes.GradeDocument import grade_documents
-from Retrival_Pipline.Graph.Nodes.Retrive import retrieve
-from Retrival_Pipline.Graph.Nodes.GenerateNode import generate
-from Retrival_Pipline.Graph.Nodes.web_search import websearch
-from Retrival_Pipline.Graph.Chains.answer_grader import answer_grader
-from Retrival_Pipline.Graph.Chains.hallucination_grader import hallucination_grader
-from Retrival_Pipline.Graph.Chains.router import question_router
+from StateGraph import GraphState
+from Nodes.IdentityResearchNode import make_identity_research
 
 load_dotenv()
 
+# Constants
+IDENTITY_RESEARCH = "identity_research"
+HUMAN_REVIEW = "human_review"
+MAX_ITERATIONS = 3
 
 
-def route_question(state: GraphState) -> str:
-    print("---ROUTE QUESTION---")
-    question = state["question"]
-    source: RouteQuery = question_router.invoke({"question": question})
-    if source.datasource == WEBSEARCH:
-        print("---ROUTE QUESTION TO WEB SEARCH---")
-        return WEBSEARCH
-    elif source.datasource == "vectorstore":
-        print("---ROUTE QUESTION TO RAG---")
-        return RETRIEVE
-
-
-
-def evaluate_generated_answer(state: GraphState) -> str:
-    print("---CHECK FOR HALLUCINATIONS---")
-
-    user_question = state["question"]
-    retrieved_documents = state["documents"]
-    generated_answer = state["generation"]
-
-    hallucination_result = hallucination_grader.invoke(
-        {
-            "documents": retrieved_documents,
-            "generation": generated_answer,
-        }
-    )
-
-    if is_grounded := hallucination_result.binary_score:
-        print("---DECISION: ANSWER IS GROUNDED IN RETRIEVED DOCUMENTS---")
-        print("---CHECK IF ANSWER ADDRESSES THE QUESTION---")
-
-        answer_result = answer_grader.invoke(
-            {
-                "question": user_question,
-                "generation": generated_answer,
+async def human_review_node(state: GraphState) -> dict:
+    """
+    Human review node: Shows report and collects user decision.
+    """
+    print("---HUMAN REVIEW OF IDENTITY REPORT---")
+    identity_data = state.get("identity_data", {})
+    report = identity_data.get("report", "No report generated.")
+    
+    print("\n" + "="*30 + " IDENTITY REPORT " + "="*30)
+    print(report)
+    print("="*75)
+    
+    # Get iteration count from identity_data or default
+    iteration = identity_data.get("research_iteration", 1)
+    print(f"\n📊 Research Iteration: {iteration}/{MAX_ITERATIONS}")
+    
+    choice = input("\nIs the report accurate and does it match the requested person? (y/n): ").strip().lower()
+    
+    if choice == 'y':
+        print("---DECISION: REPORT APPROVED BY USER---")
+        return {
+            "identity_data": {
+                **identity_data,
+                "approved": True,
+                "needs_reprocessing": False,
+                "research_iteration": iteration + 1
             }
-        )
-
-        if answers_question := answer_result.binary_score:
-            print("---DECISION: ANSWER ADDRESSES THE QUESTION---")
-            return "useful"
-
-        print("---DECISION: ANSWER DOES NOT ADDRESS THE QUESTION---")
-        return "not useful"
-
-    print("---DECISION: ANSWER IS NOT SUPPORTED BY THE RETRIEVED DOCUMENTS---")
-    return "not supported"
-
-def decide_to_generate(state):
-    print("---ASSESS GRADED DOCUMENTS---")
-
-    if state["web_search"]:
-        print(
-            "---DECISION: NOT ALL DOCUMENTS ARE NOT RELEVANT TO QUESTION, INCLUDE WEB SEARCH---"
-        )
-        return WEBSEARCH
+        }
     else:
-        print("---DECISION: GENERATE---")
-        return GENERATE
+        feedback = input("Please provide additional details to update the search: ").strip()
+        print("---DECISION: USER REQUESTED RE-SEARCH WITH FEEDBACK---")
+        
+        # Check max iterations
+        if iteration >= MAX_ITERATIONS:
+            print("⚠️ Maximum research iterations reached. Ending process.")
+            return {
+                "identity_data": {
+                    **identity_data,
+                    "approved": False,
+                    "needs_reprocessing": False,  # Stop the loop
+                    "feedback_notes": feedback,
+                    "research_iteration": iteration + 1
+                }
+            }
+        
+        # Update chain_input with feedback
+        chain_input = state.get("chain_input", {})
+        
+        return {
+            "chain_input": {
+                **chain_input,
+                "query": f"{chain_input.get('query', '')} {feedback}"  # Add feedback to query
+            },
+            "identity_data": {
+                **identity_data,
+                "approved": False,
+                "needs_reprocessing": True,  # Enable reprocessing
+                "feedback_notes": feedback,
+                "research_iteration": iteration + 1
+            }
+        }
 
 
+def decide_to_reprocess(state: GraphState) -> str:
+    """
+    Decision function: Checks needs_reprocessing flag.
+    """
+    print("---ASSESS IDENTITY REPROCESSING FLAG---")
+    
+    identity_data = state.get("identity_data", {})
+    needs_retry = identity_data.get("needs_reprocessing", False)
+    
+    if needs_retry:
+        print("---DECISION: NEEDS RE-PROCESSING (TRUE) -> RETRY RESEARCH---")
+        return IDENTITY_RESEARCH
+    else:
+        print("---DECISION: APPROVED OR NO RE-PROCESSING -> END---")
+        return END
 
 
-
+# Build workflow
 workflow = StateGraph(GraphState)
-workflow.add_node(RETRIEVE, retrieve)
-workflow.add_node(GRADE_DOCUMENTS, grade_documents)
-workflow.add_node(GENERATE, generate)
-workflow.add_node(WEBSEARCH, websearch)
-workflow.add_edge(RETRIEVE, GRADE_DOCUMENTS)
+
+# Add nodes
+workflow.add_node(IDENTITY_RESEARCH, make_identity_research)
+workflow.add_node(HUMAN_REVIEW, human_review_node)
+
+# Set entry point
+workflow.set_entry_point(IDENTITY_RESEARCH)
+
+# Add edges
+workflow.add_edge(IDENTITY_RESEARCH, HUMAN_REVIEW)
+
+# Add conditional edges
 workflow.add_conditional_edges(
-    GRADE_DOCUMENTS,
-    decide_to_generate,
+    HUMAN_REVIEW,
+    decide_to_reprocess,
     {
-        WEBSEARCH: WEBSEARCH,
-        GENERATE: GENERATE,
-    },
+        IDENTITY_RESEARCH: IDENTITY_RESEARCH,
+        END: END
+    }
 )
 
-workflow.set_conditional_entry_point(
-    route_question,
-    {
-        WEBSEARCH: WEBSEARCH,
-        RETRIEVE: RETRIEVE,
-    },
-)
-
-workflow.add_edge(WEBSEARCH, GENERATE)
-
-workflow.add_conditional_edges(
-    GENERATE,
-    evaluate_generated_answer,
-    {
-        "not supported": GENERATE,
-        "useful": END,
-        "not useful": WEBSEARCH,
-    },
-)
-
+# Compile with memory
 memory = MemorySaver()
+app = workflow.compile(checkpointer=memory)
 
-#app = workflow.compile(checkpointer=memory, interrupt_after=["websearch"])
+# Save graph visualization
+try:
+    app.get_graph().draw_mermaid_png(output_file_path="identity_graph.png")
+except Exception as e:
+    print(f"Could not save graph visualization: {e}")
 
-app = workflow.compile()
 
-
-app.get_graph().draw_mermaid_png(output_file_path="graph.png")
+# Test run
+if __name__ == "__main__":
+    import asyncio
+    
+    async def run_test():
+        initial_state = {
+            "chain_input": {
+                "query": "mostafa el adawy the egyptian salafai"
+            },
+            "identity_data": {
+                "research_iteration": 1
+            }
+        }
+        
+        print("🚀 Starting Human-in-the-Loop Identity Graph...")
+        
+        config = {"configurable": {"thread_id": "identity_research_test"}}
+        
+        try:
+            final_state = await app.ainvoke(initial_state, config=config)
+            print("\n🏁 Graph Execution Completed Successfully!")
+            
+            identity_data = final_state.get("identity_data", {})
+            print(f"Final approval status: {identity_data.get('approved', False)}")
+            print(f"Total iterations: {identity_data.get('research_iteration', 1) - 1}")
+            
+        except Exception as e:
+            print(f"Error occurred: {e}")
+    
+    asyncio.run(run_test())
