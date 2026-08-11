@@ -3,7 +3,6 @@
 import asyncio
 import os
 import sys
-from dotenv import load_dotenv
 from Nodes.GPT_ResearcherNode.ResearchNode import make_research
 from StateGraph import GraphState
 
@@ -13,9 +12,12 @@ TESTS_DIR = os.path.dirname(__file__)
 if TESTS_DIR not in sys.path:
     sys.path.insert(0, TESTS_DIR)
 
-from guidelines import shared_guidelines
+try:
+    from .mcp_config import build_audience_mcp_configs, load_environment
+except ImportError:
+    from mcp_config import build_audience_mcp_configs, load_environment
 
-load_dotenv()
+load_environment()
 
 # ============================================================
 # LAYERS - SUBJECT ONLY
@@ -111,8 +113,7 @@ shared_guidelines = [
     "Each section must contribute new knowledge. "
     "If a point was already established, reference it — do not restate it.",
 
-    "Produce findings that can support downstream intelligence analysis, "
-    "knowledge graphs, behavioral simulation, and Digital Twin construction.",
+    "Produce findings grounded strictly in empirical evidence that support downstream intelligence analysis and knowledge graph construction.",
 ]
 
 identity_worldview_layer = {
@@ -209,9 +210,12 @@ narrative_communication_layer = {
 # ============================================================
 
 subject_guidelines = shared_guidelines + [
-    "Focus exclusively on the subject themselves: "
-    "their ideas, methodology, worldview, and communication style. "
-    "Do not analyze the audience or ecosystem in this run.",
+    "This run is explicitly scoped to the subject only. "
+    "Focus exclusively on the subject's ideas, methodology, worldview, epistemology, "
+    "public identity, and communication style.",
+
+    "Do not analyze the audience, community, followers, ecosystem, diffusion dynamics, "
+    "or influence pathways in this run. If audience-related material appears, treat it only as background context.",
 
     "Search for primary sources first: the subject's own books, "
     "lectures, videos, interviews, and documented statements. "
@@ -247,6 +251,7 @@ def build_subject_query(subject_name: str, subject_profile: str) -> str:
         "OBJECTIVE:",
         "Reverse engineer the subject's intellectual system, worldview, epistemology,",
         "and communication methodology.",
+        "This run is about the subject only. Audience, followers, and ecosystem dynamics are context only.",
         "This is NOT a biography. Extract structured, reusable knowledge.",
         "",
         "RESEARCH FRAMEWORKS:",
@@ -280,6 +285,7 @@ async def run_subject_intelligence(
         subject_profile = f.read()
 
     full_query = build_subject_query(subject_name, subject_profile)
+    mcp_configs = build_audience_mcp_configs()
 
     # ضبط الـ State بحيث يتوافق مع الـ Schema الخاصة بـ IdentityData
     state: GraphState = {
@@ -290,7 +296,11 @@ async def run_subject_intelligence(
             "follow_guidelines": True,
             "max_sections": max_sections,
             "verbose": True,
+            "prompt_type": "subject",
+            "mcp_configs": mcp_configs,
         },
+        "prompt_type": "subject",
+        "mcp_configs": mcp_configs,
         "identity_data": {
             "needs_reprocessing": False,  # القيمة الافتراضية المطلوبة
             "feedback_notes": ""
@@ -298,7 +308,7 @@ async def run_subject_intelligence(
         "research_iteration": 0,
     }
 
-    print("⏳ Running Subject Intelligence Agent...")
+    print("[HOURGLASS] Running Subject Intelligence Agent...")
     result = await make_research(state)
     
     # التعامل مع المخرجات المتوافقة مع هيكل الـ identity_data
@@ -311,7 +321,7 @@ async def run_subject_intelligence(
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(report)
 
-    print(f"✅ Saved: {output_path}")
+    print(f"[OK] Saved: {output_path}")
     print(f"   Length : {len(report)} chars")
     print(f"   Sources: {len(sources)}")
     print(f"   Costs  : {costs}")

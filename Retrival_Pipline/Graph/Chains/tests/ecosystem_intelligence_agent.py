@@ -1,101 +1,68 @@
 import asyncio
 import os
 import sys
-from dotenv import load_dotenv
-from Nodes.GPT_ResearcherNode.ResearchNode import make_research
-from StateGraph import GraphState
+
+# Add the workspace root to the Python path
+WORKSPACE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+if WORKSPACE_ROOT not in sys.path:
+    sys.path.insert(0, WORKSPACE_ROOT)
+
+from Retrival_Pipline.Graph.Nodes.GPT_ResearcherNode.ResearchNode import make_research
+from Retrival_Pipline.Graph.StateGraph import GraphState
+from Retrival_Pipline.Graph.Nodes.research_compressor_node import (
+    compress_subject_intelligence,
+    format_compressed_for_injection,
+)
 
 TESTS_DIR = os.path.dirname(__file__)
 if TESTS_DIR not in sys.path:
     sys.path.insert(0, TESTS_DIR)
 
-# from guidelines import shared_guidelines
-from Nodes.research_compressor_node import compress_subject_intelligence, format_compressed_for_injection
+try:
+    from .mcp_config import build_audience_mcp_configs, load_environment
+except ImportError:
+    from mcp_config import build_audience_mcp_configs, load_environment
 
-load_dotenv()
+load_environment()
+
+os.environ.setdefault("RETRIEVER", "tavily,mcp")
+
+mcp_configs = build_audience_mcp_configs()
 
 # ============================================================
-# LAYERS - ECOSYSTEM ONLY
+# LAYERS - MACRO ECOSYSTEM & STRUCTURAL DYNAMICS
 # ============================================================
-# -*- coding: utf-8 -*-
 
 shared_guidelines = [
-    # ============================================================
-    # ORIGINAL GUIDELINES (UNCHANGED)
-    # ============================================================
-    
-    "Collect evidence from multiple independent sources before drawing any conclusion. ",
+    "Collect evidence from multiple independent sources before drawing any conclusion. "
     "A minimum of three independent sources is required before treating any claim as established.",
 
-    "Every factual claim must be traceable to a specific source. ",
+    "Every factual claim must be traceable to a specific source. "
     "If a source cannot be identified, mark the claim explicitly as [UNVERIFIED] and do not present it as fact.",
 
-    "Direct quotations require a direct URL or document reference to the exact source. ",
+    "Direct quotations require a direct URL or document reference to the exact source. "
     "If the original text or recording cannot be located, do not quote — paraphrase with source attribution instead.",
 
-    "Separate the subject's own stated positions from descriptions, labels, or accusations ",
-    "made by supporters, critics, media outlets, or third parties. ",
-    "Never present external characterizations as established facts about the subject.",
-
-    "Prefer reconstructing the subject's worldview from their own recurring statements, ",
-    "writings, speeches, lectures, and documented works — not from how opponents or supporters describe them.",
-
-    "Do not assign ideological labels  ",
-    "unless the subject has explicitly self-identified with that label, ",
-    "or the label is supported by at least three independent and reliable sources ",
-    "that provide specific behavioral or textual evidence — not mere association or accusation.",
-
-    "Treat ideological classification as a conclusion to be earned by evidence, not a starting assumption. ",
-    "When evidence is insufficient for a label, describe observable positions and patterns instead.",
-
-    "Build a broad and representative map of the subject's recurring ideas, positions, and works ",
-    "before analyzing individual examples. ",
-    "Do not allow one or two high-profile or viral incidents to dominate the analysis.",
-
-    "If a particular event or statement appears more than twice across different sections, ",
-    "this is a signal of over-reliance. Actively seek additional independent examples ",
-    "to represent the same pattern before continuing.",
-
-    "Distinguish between a subject's foundational recurring positions ",
-    "and isolated statements made in specific contexts. ",
-    "Weight recurring patterns significantly higher than single incidents.",
-
-    "Explicitly mark the epistemic status of every major claim using one of: ",
-    "[VERIFIED], [STRONG EVIDENCE], [REASONABLE INFERENCE], or [INSUFFICIENT EVIDENCE]. ",
+    "Explicitly mark the epistemic status of every major claim using one of: "
+    "[VERIFIED], [STRONG EVIDENCE], [REASONABLE INFERENCE], or [INSUFFICIENT EVIDENCE]. "
     "Never present inference as verified fact.",
 
-    "Audience demographics, motivations, and psychological profiles are almost always inferred. ",
-    "Label them clearly as [INFERRED FROM PATTERNS] and identify what observable evidence the inference is based on.",
-
-    "Prioritize primary sources: the subject's own content, books, lectures, interviews, ",
-    "and documented statements. Secondary sources (news articles, Wikipedia, advocacy organizations) ",
-    "are supporting evidence only — never the sole basis for a major claim.",
-
-    "If primary sources on a topic cannot be found, explicitly state: ",
-    "'Primary source not located. The following is based on secondary reporting.' ",
-    "Do not silently substitute secondary sources for primary ones.",
-
-    "When only secondary sources are available, assess and state their reliability. ",
-    "Advocacy organizations, political opponents, and state media each carry specific biases ",
-    "that must be acknowledged when their reporting is used.",
-
-    "When two or more sources conflict on any fact, present all versions explicitly, ",
+    "When two or more sources conflict on any fact, present all versions explicitly, "
     "identify each source, and flag the conflict. Never silently resolve a conflict by choosing one version.",
 
-    "Do not omit a section because information is unavailable. ",
-    "Instead write: 'Insufficient reliable evidence found on this topic.' ",
+    "Do not omit a section because information is unavailable. "
+    "Instead write: 'Insufficient reliable evidence found on this topic.' "
     "Visible gaps are more valuable than silent omissions.",
 
-    "Prioritize structured knowledge extraction over narrative writing. ",
+    "Prioritize structured knowledge extraction over narrative writing. "
     "The output should read as an intelligence document, not a biography or an essay.",
 
-    "Avoid repeating the same information across multiple sections. ",
-    "Each section must contribute new knowledge. ",
+    "Avoid repeating the same information across multiple sections. "
+    "Each section must contribute new knowledge. "
     "If a point was already established, reference it — do not restate it.",
 
-    "Produce findings that can support downstream intelligence analysis, ",
-    "knowledge graphs, behavioral simulation, and Digital Twin construction.",
-    
+    "Produce findings grounded strictly in empirical evidence that support downstream intelligence analysis and knowledge graph construction.",
+
     "IMPORTANT: This report will be ingested directly into a Retrieval-Augmented Generation (RAG) knowledge base. Every unnecessary sentence reduces retrieval quality.",
 
     "Start immediately with the first requested section heading. Never write an introduction, overview, executive summary, preface, opening paragraph, or any contextual lead-in.",
@@ -104,215 +71,244 @@ shared_guidelines = [
 
     "The report must end immediately after the final requested section. Do not append any closing sentence or transition.",
 
-    "Never add filler or connective phrases such as 'In conclusion', 'Overall', 'To summarize', 'This report examines', 'The above shows', 'Finally', or similar narrative transitions.",
-
     "Output only the explicitly requested sections in the specified order. Do not create additional headings or explanatory sections.",
 
-    "Do not write for human readability or essay style. Write for machine retrieval, indexing, and knowledge extraction.",
-
-    "Every paragraph must contain factual, retrievable information. Remove any sentence that does not introduce new knowledge.",
-
-    "Do not include stylistic, rhetorical, or narrative text. Any sentence that does not improve retrieval precision is considered an error.",
-
-    "The report is a structured knowledge artifact, not an article, report, or essay. Treat every token as part of a future RAG corpus.",
-
-
-    # ============================================================
-    # ADDITIONAL GUIDELINES (Concise Anti-Hallucination)
-    # ============================================================
-    
     "CRITICAL RULE: Do not generate, estimate, or invent any percentage, statistic, or numerical figure unless explicitly stated in a directly cited source. A number without a direct citation is a hallucination.",
 
-    "When quantitative data is unavailable, use descriptive language: 'commonly observed', 'frequently appears', 'recurring pattern' instead of percentages. Label as [INFERRED FROM PATTERNS] and specify the evidence base.",
-
-    "Every statistic must be traceable to: (a) specific source document, (b) page/table/question number, (c) direct URL. If any missing → [UNVERIFIED].",
-
-    "For every claim about what an organization published, verify the organization's scope matches the claim. Survey organizations do not classify respondents by affiliation with specific individuals. Human rights organizations do not publish comparative fiqh studies. Scope mismatch → [UNVERIFIED].",
-
-    "Do not present comparative statistics (X% vs Y%) unless both numbers come from the same study with same methodology, same group definitions, and direct citation. Otherwise state: 'No quantitative comparison available.'",
-
-    "Before citing any source, verify: (1) source exists, (2) source contains the claim, (3) source scope is appropriate. If any check fails → do not use.",
-
-    "When evidence contradicts a claim, present all versions explicitly with sources. Never silently resolve conflicts by choosing one version.",
+    "Do not generate simulation rules, pseudocode, IF-THEN statements, agent behaviors, predictive models, or hypothetical scenarios.",
 ]
 
-controversy_opposition_layer = {
-    "name": "Controversy & Opposition Intelligence",
+macro_environmental_context_layer = {
+    "name": "Macro Environmental Context Layer",
     "objective": (
-        "Understand the major sources of disagreement, criticism, opposition, "
-        "and competing narratives surrounding the subject."
+        "Analyze broader political, socio-economic, religious, and institutional conditions "
+        "that enable or hinder the Subject-Audience ecosystem."
     ),
     "extraction_tasks": [
-        "Identify the subject's principal critics, competitors, and opposing communities.",
-        "Identify the major sources of disagreement, criticism, or public controversy.",
-        "Explain which ideas, positions, or actions generate the strongest support and opposition.",
-        "Analyze competing narratives and alternative interpretations presented by different groups.",
-        "Identify recurring criticisms directed at the subject and evaluate the evidence supporting them.",
-        "Analyze how the subject responds to criticism, disagreement, or public controversy.",
-        "Explain how supporters, critics, and neutral observers interpret the same events differently.",
-        "Identify recurring patterns of polarization, alliance formation, and conflict within the surrounding ecosystem.",
+        "Identify the national and regional political climate relevant to the Subject-Audience ecosystem, including governance stability, ideological currents, and state-society relations.",
+        "Analyze socio-economic conditions (employment, inequality, urbanization, migration, education access) that shape audience receptivity and institutional tolerance.",
+        "Map the religious or ideological landscape at the macro level — dominant schools, official religious policy, sectarian dynamics — and how they frame the ecosystem's operating space.",
+        "Identify historical or structural conditions (conflicts, reforms, demographic shifts, media liberalization) that created the current environment.",
+        "Distinguish enabling conditions (tolerance windows, platform access, institutional gaps) from constraining conditions (crackdowns, censorship regimes, economic pressure).",
+        "Explain how macro conditions interact with the Subject's influence model and Audience composition without re-describing subject biography or audience segments.",
     ],
 }
 
-audience_community_layer = {
-    "name": "Audience & Community Layer",
-    "objective": "Understand who composes the audience, why they participate, how communities form, and how engagement evolves over time.",
+institutional_power_dynamics_layer = {
+    "name": "Institutional Power Dynamics Layer",
+    "objective": (
+        "Map relationships with formal authorities, state institutions, official religious bodies, "
+        "and legal/regulatory frameworks governing the Subject-Audience ecosystem."
+    ),
     "extraction_tasks": [
-        "Identify the major audience segments and characterize them by demographics, education, and socioeconomic background. Clearly mark demographic claims as [INFERRED] when not based on direct data.",
-        "Explain why each segment is attracted to the subject, what psychological needs are fulfilled, and how engagement differs across groups.",
-        "Extract the shared cultural norms, moral priorities, identity markers, and assumptions characterizing the audience ecosystem.",
-        "Identify formal and informal community structures, influential followers, and secondary influencers.",
-        "Determine how trust develops, how newcomers integrate, and how long-term members differ from casual consumers.",
-        "Analyze how disagreement, controversy, or conflicting interpretations are handled within the community.",
-        "Extract shared language, terminology, symbols, and recurring narratives used by followers.",
+        "Identify state institutions, ministries, security agencies, and regulatory bodies with documented authority over the subject's activities or audience.",
+        "Map official religious institutions (fatwa councils, religious ministries, authorized preachers) and their documented stance toward the subject or rival authorities.",
+        "Analyze legal and regulatory frameworks — licensing, blasphemy laws, media regulations, NGO rules — that constrain or protect the ecosystem.",
+        "Document formal alliances, endorsements, warnings, investigations, arrests, or sanctions involving the subject or key ecosystem actors.",
+        "Identify institutional gatekeepers (editors, platform liaisons, university administrators, mosque committees) who mediate access to audiences.",
+        "Distinguish de jure institutional positions from de facto enforcement patterns when evidence supports the distinction.",
     ],
 }
 
-influence_layer = {
-    "name": "Influence Intelligence",
+competitive_rivalry_landscape_layer = {
+    "name": "Competitive Rivalry Landscape Layer",
     "objective": (
-        "Understand how the subject generates influence, shapes public discourse, "
-        "and affects individuals, communities, and institutions."
+        "Analyze competing actors, rival movements, alternative authorities, and counter-ecosystems "
+        "fighting for the same audience share or institutional legitimacy."
     ),
     "extraction_tasks": [
-        "Identify the subject's primary sources of influence and authority.",
-        "Analyze how influence is established, maintained, and expanded over time.",
-        "Identify the communities, institutions, organizations, or networks most affected by the subject.",
-        "Explain how the subject influences beliefs, attitudes, behaviors, or decision-making.",
-        "Identify ideas or narratives that have produced measurable public impact. Provide at least three distinct examples from different domains or time periods.",
-        "Analyze the factors that strengthen, weaken, or limit the subject's influence.",
-        "Identify recurring patterns of trust, credibility, reputation, and authority that reinforce long-term influence.",
-        "Distinguish direct influence from indirect influence through followers, organizations, or secondary influencers.",
+        "Identify principal rival influencers, movements, or schools of thought competing for the same audience segments.",
+        "Map institutional rivals — competing religious councils, political factions, media networks — and their documented conflicts with the subject's ecosystem.",
+        "Analyze counter-ecosystems (state-aligned networks, reformist currents, extremist fringe groups) that actively oppose or absorb the subject's audience.",
+        "Document specific rivalry events: public debates, fatwa wars, platform battles, institutional exclusions, or audience poaching incidents.",
+        "Explain how rivals frame the subject and how the subject's ecosystem frames rivals, citing specific documented exchanges.",
+        "Identify structural advantages or disadvantages the subject's ecosystem holds relative to competitors without repeating audience psychology analysis.",
     ],
 }
 
-network_structure_layer = {
-    "name": "Network Structure Layer",
+media_algorithmic_infrastructure_layer = {
+    "name": "Media & Algorithmic Infrastructure Layer",
     "objective": (
-        "Map the ecosystem's key institutions, influencers, communities, and dissemination channels, "
-        "and explain how they are connected to the subject and to each other."
+        "Analyze the physical and digital platform infrastructure and how censorship, "
+        "algorithmic distribution, or offline networks impact ecosystem viability."
     ),
     "extraction_tasks": [
-        "Identify the major nodes in the ecosystem: institutions, media channels, groups, and influential individuals.",
-        "Explain how information, support, and criticism flow between these nodes.",
-        "Identify which channels amplify the subject's ideas and which channels oppose or moderate them.",
-        "Describe formal and informal networks that shape audience behavior and ecosystem response.",
-        "Point out structural strengths and weak links in the ecosystem network.",
+        "Inventory the primary distribution channels (Telegram, YouTube, Facebook, satellite TV, podcasts, books, mosques, conferences) with evidence of actual usage.",
+        "Analyze platform-specific constraints: content moderation, account bans, demonetization, shadow-banning, or algorithmic suppression documented for this ecosystem.",
+        "Map offline infrastructure — study circles, mosque networks, publishing houses, travel circuits — that sustains the ecosystem beyond digital platforms.",
+        "Identify state or corporate media infrastructure that amplifies or suppresses the subject's reach.",
+        "Document infrastructure dependencies and redundancies: what happens when a primary channel is lost, based on historical evidence.",
+        "Analyze how platform architecture (group chats vs. broadcast, recommendation engines vs. direct links) shapes reach without re-analyzing audience engagement psychology.",
     ],
 }
 
-resilience_layer = {
-    "name": "Resilience & Vulnerability Layer",
+systemic_risk_vulnerability_layer = {
+    "name": "Systemic Risk & Vulnerability Layer",
     "objective": (
-        "Identify what strengthens or weakens the ecosystem, how feedback loops operate, "
-        "and where the system is most likely to change or break under pressure."
+        "Identify structural vulnerabilities, single-points-of-failure, and systemic resilience "
+        "within the Subject-Audience ecosystem."
     ),
     "extraction_tasks": [
-        "Identify factors that reinforce the ecosystem against external criticism, regulation, or loss of legitimacy.",
-        "Identify vulnerabilities that could destabilize audience support, institutions, or influence channels.",
-        "Map the feedback loops that sustain, amplify, or dampen community energy and engagement.",
-        "Explain which behaviors or events are most likely to trigger rapid ecosystem shifts.",
-        "Identify early warning signals, tipping points, or common failure modes in this ecosystem.",
+        "Identify single-points-of-failure: subject dependency, platform concentration, geographic concentration, or institutional bottlenecks.",
+        "Document historical stress events (arrests, bans, controversies, platform removals) and how the ecosystem responded based on evidence.",
+        "Analyze systemic resilience mechanisms: decentralized networks, successor figures, archive preservation, cross-border relocation, institutional backing.",
+        "Identify legal, financial, or reputational vulnerabilities with documented precedent in similar cases or this subject's history.",
+        "Map cascading failure risks: how loss of one node (subject, platform, patron institution) would affect the broader ecosystem structure.",
+        "Distinguish observed resilience from assumed resilience; mark unsupported resilience claims as [INSUFFICIENT EVIDENCE].",
     ],
 }
 
-simulation_layer = {
-    "name": "Simulation Knowledge Collection",
+institutional_macro_environment_layer = {
+    "name": "Institutional Macro Environment Layer",
     "objective": (
-        "Collect only the factual evidence and structured observations required "
-        "by a downstream simulation model. Do not design, infer, or propose "
-        "simulation rules."
+        "Map real-world institutional responses, policy/legal impacts, and macro-level ripple effects "
+        "based strictly on documented evidence — not speculation or prediction."
     ),
     "extraction_tasks": [
-        "Collect documented audience behaviors observed across multiple independent sources.",
-        "Collect documented reactions to major events, controversies, criticism, and external pressure.",
-        "Collect evidence describing how information spreads through the community.",
-        "Collect documented examples of interactions between supporters, critics, neutral observers, and institutions.",
-        "Collect evidence describing trust formation, authority recognition, credibility assessment, and influence relationships.",
-        "Collect recurring community norms, terminology, rituals, symbols, and identity markers.",
-        "Collect evidence about audience segmentation, membership evolution, and community lifecycle.",
-        "Collect observable feedback patterns reported by reliable sources.",
-        "Collect measurable behavioral indicators, timelines, frequencies, and historical examples whenever available.",
-        "Flag missing information explicitly rather than inferring it.",
+        "Document specific institutional responses to the subject or ecosystem: official statements, investigations, licensing actions, media campaigns, diplomatic notes.",
+        "Map policy or legal changes that directly affected or were triggered by the subject's activities, citing primary government, judicial, or institutional sources.",
+        "Identify macro-level ripple effects: how the ecosystem influenced public discourse, institutional debates, or cross-border reactions when evidence exists.",
+        "Document institutional adaptation patterns: how state media, rival clerics, or regulatory bodies adjusted their posture over time based on observable actions.",
+        "Record documented international or regional institutional reactions (foreign ministries, transnational religious bodies, diaspora institutions) when relevant.",
+        "Do NOT generate hypothetical IF-THEN scenarios, future predictions, or simulation rules. Report only documented institutional behavior and its observed consequences.",
     ],
 }
+
+ECOSYSTEM_LAYERS = [
+    macro_environmental_context_layer,
+    institutional_power_dynamics_layer,
+    competitive_rivalry_landscape_layer,
+    media_algorithmic_infrastructure_layer,
+    systemic_risk_vulnerability_layer,
+    institutional_macro_environment_layer,
+]
 
 # ============================================================
 # AGENT-SPECIFIC GUIDELINES
 # ============================================================
 
 ecosystem_guidelines = shared_guidelines + [
-    "This run focuses exclusively on the ecosystem surrounding the subject: ",
-    "audience, community, influence mechanisms, opposition, and simulation. ",
-    "Do not re-analyze the subject's personal ideology or biography — ",
-    "that was covered in the Subject Intelligence run.",
+    "This agent analyzes the MACRO ENVIRONMENT in which the Subject-Audience entity operates. "
+    "Focus on institutional interactions, geopolitical context, competitive forces, regulatory dynamics, "
+    "and structural ecosystem conditions — not subject biography or audience psychology.",
 
-    "If the model begins to drift into abstract political philosophy, stop and focus on concrete ecosystem dynamics only.",
-    "Avoid generic descriptions of ideology, political theory, or philosophy unless they are directly required to explain a specific ecosystem behavior tied to this subject.",
-    "Map at least three distinct controversy events or opposition sources. ",
-    "Do not allow a single controversy to dominate the Opposition section.",
+    "Do NOT repeat subject biography, personal ideology analysis, or basic audience segmentation. "
+    "Those were covered by the Subject and Audience Intelligence runs. "
+    "Synthesize how the Subject + Audience entity operates INSIDE the broader macro ecosystem.",
+
+    "Treat the Subject-Audience pair as a single influence entity embedded in a macro structural environment. "
+    "The subject is an influence node; the audience is a mobilized constituency — "
+    "but your analysis target is the external environment they inhabit.",
+
+    "Zero speculation: do not predict future events, generate IF-THEN rules, or propose hypothetical scenarios. "
+    "Report only documented institutional behavior, observable structural dynamics, and evidence-backed macro patterns.",
+
+    "Multi-source verification is mandatory for institutional claims. "
+    "Government statements, legal records, official religious rulings, and reputable journalism "
+    "should corroborate major claims about institutional posture.",
+
+    "When analyzing rivals and competitors, focus on structural and institutional competition "
+    "for audience share and legitimacy — not on re-describing audience motivations.",
+
+    "When analyzing media infrastructure, focus on platform viability, censorship, and distribution mechanics — "
+    "not on re-describing how audiences engage with content.",
+
+    "If the model drifts into subject biography, audience psychology, or abstract political philosophy, "
+    "stop and refocus on macro-structural and institutional dynamics only.",
+
+    "Do not present findings as a formal empirical study, survey, or quantitative proof "
+    "unless the evidence clearly supports that framing.",
 ]
+
+# ============================================================
+# COMPRESSION HELPERS
+# ============================================================
+
+def _resolve_report_path(report_path: str | None) -> str | None:
+    if not report_path:
+        return None
+    if os.path.isabs(report_path) and os.path.exists(report_path):
+        return report_path
+    candidate = os.path.join(TESTS_DIR, report_path)
+    if os.path.exists(candidate):
+        return candidate
+    if os.path.exists(report_path):
+        return report_path
+    return None
+
+
+def compress_intelligence_report(report_content: str, short_query: str) -> str:
+    """Compress a prior intelligence report into an injection-ready summary."""
+    state: GraphState = {
+        "subject_intelligence_report": report_content,
+        "user_initial_query": short_query,
+    }
+    compressed_state = compress_subject_intelligence(state)
+    compressed = compressed_state.get("compressed_intelligence", {})
+    return format_compressed_for_injection(compressed) if compressed else report_content[:8000]
+
 
 # ============================================================
 # QUERY BUILDER
 # ============================================================
 
-def build_ecosystem_query(subject_name: str, subject_profile: str, compressed_briefing: str) -> str:
-    layers = [
-        controversy_opposition_layer,
-        audience_community_layer,
-        influence_layer,
-        network_structure_layer,
-        resilience_layer,
-        simulation_layer,
-    ]
-
+def build_ecosystem_query(
+    subject_name: str,
+    subject_summary: str,
+    audience_summary: str,
+) -> str:
     lines = [
-        "You are an expert researcher specializing in reverse-engineering influence ecosystems,", 
-        "network analysis, and socio-political dynamics across diverse contexts and backgrounds.",
-        "You analyze religious figures, political actors, thought leaders, media personalities,", 
-        "and cultural influencers with methodological rigor and contextual awareness.",
+        "You are a Senior Systemic Intelligence Architect and Macro-Environmental Analyst.",
+        "You specialize in institutional dynamics, geopolitical context, competitive landscapes,",
+        "regulatory frameworks, and structural ecosystem analysis.",
         "",
-        "Your task is to produce a high-quality Ecosystem Intelligence Report",
+        "Your task is to produce a high-quality Macro Ecosystem Intelligence Report",
         "that can be used for downstream analysis and knowledge extraction.",
         "",
-        "TASK: Ecosystem Intelligence Profile",
+        "TASK: Macro Ecosystem & Structural Dynamics Profile",
         "",
         f"Subject: {subject_name}",
         "",
-        "=== SUBJECT PROFILE CONTEXT ===",
-        subject_profile.strip(),
-        "===============================",
+        "GROUNDING INSTRUCTION:",
+        "Do NOT repeat subject biography or basic audience segmentation.",
+        "Synthesize how the Subject + Audience entity operates INSIDE the broader macro ecosystem.",
+        "Build strictly on the compressed Subject and Audience intelligence provided below.",
         "",
-        "=== COMPRESSED BRIEFING (PREVIOUS SEARCH RESULTS) ===",
-        compressed_briefing.strip(),
-        "=====================================================",
+        "<subject_context>",
+        subject_summary.strip(),
+        "</subject_context>",
+        "",
+        "<audience_context>",
+        audience_summary.strip(),
+        "</audience_context>",
         "",
         "OBJECTIVE:",
-        "Map the ecosystem surrounding the subject - the networks, audiences,",
-        "institutions, controversies, and influence mechanisms that form the",
-        "subject's real-world sphere of activity.",
-        "Extract structured, evidence-based knowledge about how the ecosystem operates.",
+        "Analyze the macro environment, institutional interactions, geopolitical and socio-religious landscape,",
+        "competitive forces, and regulatory/media dynamics surrounding the Subject-Audience entity.",
+        "Extract structured, evidence-based knowledge about how external structural forces shape this ecosystem.",
         "",
-        "This is NOT a biography of the subject. Build on the existing Subject Intelligence Report.",
+        "This is NOT a biography of the subject and NOT an audience profile.",
+        "The macro structural environment is the primary object of analysis.",
         "",
-        "⚠️ CRITICAL: This task is for OBSERVED ecosystem dynamics only.",
-        "Do NOT generate any simulation rules, IF-THEN statements, compliance rates,",
-        "percentages, or predictive behavioral models.",
-        "Focus exclusively on documented behaviors, events, and relationships.",
+        "CRITICAL CONSTRAINTS:",
+        "- Documented evidence only. No predictions, no IF-THEN rules, no simulation parameters.",
+        "- No invented statistics, percentages, or numerical metrics without direct citation.",
+        "- Do not re-analyze subject ideology or audience psychology — synthesize macro structural dynamics.",
         "",
-        "RESEARCH FRAMEWORKS:",
-        "",
+        "<macro_frameworks>",
     ]
 
-    for layer in layers:
+    for layer in ECOSYSTEM_LAYERS:
         lines.append(f"### {layer['name']} ###")
         lines.append(f"Objective: {layer['objective']}")
         for task in layer["extraction_tasks"]:
             lines.append(f"- {task}")
         lines.append("")
 
+    lines.append("</macro_frameworks>")
+
     return "\n".join(lines)
+
 
 # ============================================================
 # MAIN
@@ -320,66 +316,48 @@ def build_ecosystem_query(subject_name: str, subject_profile: str, compressed_br
 
 async def run_ecosystem_intelligence(
     subject_name: str,
-    profile_path: str,
     subject_intelligence_path: str,
+    audience_intelligence_path: str,
     short_query: str,
-    max_sections: int = 4,
+    max_sections: int = 6,
 ):
-    if not os.path.exists(profile_path):
-        print(f"❌ Profile not found: {profile_path}")
+    subject_report_path = _resolve_report_path(subject_intelligence_path)
+    audience_report_path = _resolve_report_path(audience_intelligence_path)
+
+    if subject_report_path is None:
+        print(f"❌ Subject intelligence report not found: {subject_intelligence_path}")
         return None
 
-    # Use the real subject intelligence output report when available, so the ecosystem run continues directly.
-    subject_intelligence_report_path = subject_intelligence_path
-    fallback_report_path = None
-    if subject_intelligence_report_path and not os.path.isabs(subject_intelligence_report_path):
-        fallback_report_path = os.path.join(TESTS_DIR, subject_intelligence_report_path)
+    if audience_report_path is None:
+        print(f"❌ Audience intelligence report not found: {audience_intelligence_path}")
+        return None
 
-    if subject_intelligence_report_path and os.path.exists(subject_intelligence_report_path):
-        report_source_path = subject_intelligence_report_path
-    elif fallback_report_path and os.path.exists(fallback_report_path):
-        report_source_path = fallback_report_path
-    else:
-        report_source_path = None
+    with open(subject_report_path, "r", encoding="utf-8") as f:
+        subject_report_content = f.read()
 
-    if report_source_path is None:
-        intermediate_report_path = r"C:\Users\DELL\graph-rag-agent\outputs\run_150f010a03c049fb8ae722c0541ad5d4\f491795c8c444e19af4c212b3b2b767e.md"
-        if os.path.exists(intermediate_report_path):
-            report_source_path = intermediate_report_path
-            print(f"⚠️ Warning: subject_intelligence_path not found. Falling back to fixed intermediate report: {report_source_path}")
-        else:
-            print("❌ Neither the subject intelligence report nor the fixed intermediate report were found.")
-            return None
+    with open(audience_report_path, "r", encoding="utf-8") as f:
+        audience_report_content = f.read()
 
-    # قراءة الملفات
-    with open(profile_path, "r", encoding="utf-8") as f:
-        subject_profile = f.read()
+    print(f"🔗 Subject intelligence report: {subject_report_path}")
+    print(f"🔗 Audience intelligence report: {audience_report_path}")
 
-    with open(report_source_path, "r", encoding="utf-8") as f:
-        intermediate_report_content = f.read()
+    print("⏳ Compressing Subject Intelligence Report...")
+    subject_summary = compress_intelligence_report(subject_report_content, short_query)
 
-    print(f"🔗 Using subject intelligence report: {report_source_path}")
+    print("⏳ Compressing Audience Intelligence Report...")
+    audience_summary = compress_intelligence_report(audience_report_content, short_query)
 
-    print("⏳ Compressing Intermediate Report...")
-    compressed_state = compress_subject_intelligence({
-        "subject_intelligence_report": intermediate_report_content
-    })
-    
-    compressed_briefing = format_compressed_for_injection(
-        compressed_state["compressed_intelligence"]
-    )
+    print("\n" + "=" * 60)
+    print("🔍 SUBJECT SUMMARY (injection preview):")
+    print("=" * 60)
+    print(subject_summary[:2000] + ("..." if len(subject_summary) > 2000 else ""))
+    print("=" * 60)
+    print("🔍 AUDIENCE SUMMARY (injection preview):")
+    print("=" * 60)
+    print(audience_summary[:2000] + ("..." if len(audience_summary) > 2000 else ""))
+    print("=" * 60 + "\n")
 
-    print("\n" + "="*60)
-    print("🔍 COMPRESSED BRIEFING (Before sending to Agent):")
-    print("="*60)
-    print(compressed_briefing)
-    print("="*60 + "\n")
-
-    full_query = build_ecosystem_query(
-        subject_name, 
-        subject_profile, 
-        compressed_briefing
-    )
+    full_query = build_ecosystem_query(subject_name, subject_summary, audience_summary)
 
     state: GraphState = {
         "user_initial_query": short_query,
@@ -389,10 +367,14 @@ async def run_ecosystem_intelligence(
             "follow_guidelines": True,
             "max_sections": max_sections,
             "verbose": True,
+            "prompt_type": "ecosystem",
+            "mcp_configs": mcp_configs,
         },
+        "prompt_type": "ecosystem",
+        "mcp_configs": mcp_configs,
         "identity_data": {
             "needs_reprocessing": False,
-            "feedback_notes": ""
+            "feedback_notes": "",
         },
         "research_iteration": 0,
     }
@@ -420,8 +402,8 @@ async def run_ecosystem_intelligence(
 if __name__ == "__main__":
     asyncio.run(run_ecosystem_intelligence(
         subject_name="Sheikh Mostafa Al-Adawy",
-        profile_path=r"C:\Users\DELL\graph-rag-agent\mostafa_el_adawy_the_egyptian_salafai_report.md",
-        subject_intelligence_path="MostafaAlAdawy_subject_intelligence.md",
+        subject_intelligence_path=r"C:\Users\DELL\graph-rag-agent\outputs\run_f72fdfbdb74642b59e8a8eb3eb9e8188\b113dfd89d214e61ac82e1958b61dc84.md",
+        audience_intelligence_path="MostafaAlAdawy_audience_intelligence.md",
         short_query="MostafaAlAdawy",
-        max_sections=4,
+        max_sections=6,
     ))

@@ -23,8 +23,8 @@ class CompressedIntelligence(TypedDict):
 
     covered_topics: str
     confirmed_positions: str
-    gaps_and_unknowns: str
-    ecosystem_research_instructions: str
+    available_insights: str
+    profile_context: str
 
 
 
@@ -35,6 +35,9 @@ class ChainInput(TypedDict, total=False):
     follow_guidelines: bool
     guidelines: list[str]
     verbose: bool
+    prompt_type: str
+    mcp_configs: list[dict[str, object]]
+    mcp_strategy: str
 
 
 class IdentityData(TypedDict, total=False):
@@ -54,11 +57,33 @@ class IdentityData(TypedDict, total=False):
     """Boolean flag to check if the user requested to re-run the research."""
     feedback_notes: str
     """The specific feedback or extra details provided by the user for the next search pass."""
+    research_iteration: int
+    """Current research iteration count."""
+
+class ReportData(TypedDict, total=False):
+    """Structured data for storing generated reports."""
+    content: str
+    path: str
+    sources: list[str]
+    costs: float
+    metadata: dict[str, Any]
+
+
+class IntelligenceReports(TypedDict, total=False):
+    """Collection of intelligence reports stored in the graph state."""
+    subject: ReportData
+    audience: ReportData
+    ecosystem: ReportData
+    profile_summary: ReportData
+    briefing_summary: ReportData
+
 
 class GraphState(TypedDict, total=False):
     """State shared across the graph."""
     user_initial_query: str
     chain_input: ChainInput
+    prompt_type: str
+    subject_intelligence_report: str
     profile_candidates: list[ProfileCandidate]
     selected_profile: Optional[ProfileCandidate]
     needs_more_research: bool
@@ -66,3 +91,8 @@ class GraphState(TypedDict, total=False):
     research_iteration: int
     compressed_intelligence: CompressedIntelligence
     identity_data: IdentityData
+    mcp_configs: list[dict[str, object]]
+    mcp_strategy: str
+    reports: IntelligenceReports
+    input_paths: dict[str, str]
+    run_folder: str

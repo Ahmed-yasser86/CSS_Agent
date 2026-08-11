@@ -89,6 +89,7 @@ shared_guidelines = [
     "Each section must contribute new knowledge. "
     "If a point was already established, reference it — do not restate it.",
 
-    "Produce findings that can support downstream intelligence analysis, "
-    "knowledge graphs, behavioral simulation, and Digital Twin construction.",
+    "Produce findings grounded strictly in empirical evidence that support downstream intelligence analysis and knowledge graph construction.",
+    "Do not generate simulation rules, pseudocode, Input-Processing-Output (IPO) tables, or Agent-Based Modeling (ABM) parameters.",
+    "Do not fabricate statistical percentages, probabilities, or numerical metrics without direct citation from verifiable sources.",
 ]

@@ -4,5 +4,8 @@
         "Retrival_Pipline"
     ],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "python.analysis.extraPaths": [
+        "Retrival_Pipline/Graph/Chains/tests"
+    ]
 }

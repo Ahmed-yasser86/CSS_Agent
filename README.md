@@ -4,6 +4,7 @@
 
 - Ingestion_Pipline: ingestion and embedding utilities
 - Retrival_Pipline: graph-based retrieval workflow
+- SocialScienceResearch: YouTube computational social science module (collection, sampling, analytics)
 - main.py: unified entry point
 
 ## Running

@@ -1,14 +1,29 @@
+import inspect
 from typing import Any, Dict
+import logging
 
-from Chains.GPT_Researcher import conduct_multi_agent_research
-from StateGraph import GraphState, ProfileCandidate
+# Add the workspace root and Retrival_Pipline to the Python path
+import os
+import sys
+
+WORKSPACE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", ".."))
+RETRIVAL_PIPELINE_PATH = os.path.join(WORKSPACE_ROOT, "Retrival_Pipline")
+
+if WORKSPACE_ROOT not in sys.path:
+    sys.path.insert(0, WORKSPACE_ROOT)
+if RETRIVAL_PIPELINE_PATH not in sys.path:
+    sys.path.insert(0, RETRIVAL_PIPELINE_PATH)
+
+# Import from Retrival_Pipline.Graph.Chains.GPT_Researcher
+from Retrival_Pipline.Graph.Chains.GPT_Researcher import conduct_multi_agent_research
+from Retrival_Pipline.Graph.StateGraph import GraphState, ProfileCandidate
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_raw_result(raw_result: Any) -> dict:
     """
-    run_research_task() بترجع أشكال مختلفة حسب إزاي الـ pipeline خلص:
-    dict عادي، أو list فيها dict، أو string خام (التقرير نفسه بس من غير
-    wrapping). الدالة دي بتحول أي شكل منهم لـ dict موحّد نقدر نتعامل معاه.
+    Normalize the raw result from conduct_multi_agent_research into a consistent dictionary format.
     """
     if isinstance(raw_result, dict):
         return raw_result
@@ -39,14 +54,57 @@ def _extract_section_map(item: Any) -> Dict[str, str]:
 
 
 async def make_research(state: GraphState) -> Dict[str, Any]:
-    chain_input = state["chain_input"]
+    chain_input = state.get("chain_input", {})
+    mcp_configs = chain_input.get("mcp_configs") or state.get("mcp_configs")
+    mcp_strategy = chain_input.get("mcp_strategy") or state.get("mcp_strategy")
+    prompt_type = state.get("prompt_type") or chain_input.get("prompt_type")
+    guidelines = chain_input.get("guidelines") or state.get("guidelines")
 
-    raw_result = await conduct_multi_agent_research(
-        query=chain_input["query"],
-        max_sections=chain_input.get("max_sections", 5),
-        follow_guidelines=chain_input.get("follow_guidelines", True),
-        verbose=chain_input.get("verbose", True),
-    )
+    # Redacted logging to help debug whether MCP configs are reaching this node.
+    try:
+        redacted = None
+        if mcp_configs:
+            redacted = []
+            for cfg in mcp_configs:
+                rc = dict(cfg)
+                if "connection_token" in rc:
+                    rc["connection_token"] = "<REDACTED>"
+                if "connection_headers" in rc and isinstance(rc["connection_headers"], dict):
+                    rh = {}
+                    for hk, hv in rc["connection_headers"].items():
+                        if hk.lower() == "authorization":
+                            rh[hk] = "<REDACTED>"
+                        else:
+                            rh[hk] = hv
+                    rc["connection_headers"] = rh
+                redacted.append(rc)
+        logger.debug(f"make_research: mcp_configs (redacted)={redacted}, mcp_strategy={mcp_strategy}")
+    except Exception:
+        logger.exception("Failed to redact or log mcp_configs")
+
+    call_kwargs: Dict[str, Any] = {
+        "query": chain_input["query"],
+        "max_sections": chain_input.get("max_sections", 5),
+        "follow_guidelines": chain_input.get("follow_guidelines", True),
+        "verbose": chain_input.get("verbose", True),
+        "prompt_type": prompt_type,
+        "mcp_configs": mcp_configs,
+        "mcp_strategy": mcp_strategy,
+    }
+
+    try:
+        signature = inspect.signature(conduct_multi_agent_research)
+    except (TypeError, ValueError):
+        signature = None
+
+    if signature is not None:
+        accepts_guidelines = "guidelines" in signature.parameters or any(
+            param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()
+        )
+        if accepts_guidelines:
+            call_kwargs["guidelines"] = guidelines
+
+    raw_result = await conduct_multi_agent_research(**call_kwargs)
 
     if raw_result is None:
         raise RuntimeError("run_research_task() رجّع None")

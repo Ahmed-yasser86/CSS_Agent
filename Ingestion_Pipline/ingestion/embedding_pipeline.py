@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import tiktoken
+import random
+import re
 from langchain_core.documents import Document
 from langchain_qdrant import QdrantVectorStore
 from rich.console import Console
@@ -68,7 +70,10 @@ class ResilientEmbeddingPipeline:
 
     def _split_doc_into_sized_chunks(self, doc: Document, token_limit: int) -> list[Document]:
         tokens = self.encoding.encode(doc.page_content)
-        if len(tokens) <= token_limit:
+        total_tokens = len(tokens)
+        console.print(f"[magenta]Splitting doc (tokens={total_tokens}) into token-limited chunks of {token_limit} tokens[/magenta]")
+        if total_tokens <= token_limit:
+            console.print(f"[magenta]No split needed: doc tokens {total_tokens} <= token_limit {token_limit}[/magenta]")
             return [doc]
 
         chunks: list[Document] = []
@@ -76,24 +81,35 @@ class ResilientEmbeddingPipeline:
 
         for i in range(0, len(tokens), token_limit):
             chunk_tokens = tokens[i : i + token_limit]
+            chunk_text = self.encoding.decode(chunk_tokens)
             chunks.append(
                 Document(
-                    page_content=self.encoding.decode(chunk_tokens),
+                    page_content=chunk_text,
                     metadata=metadata,
                 )
             )
-
+        console.print(f"[magenta]Created {len(chunks)} chunks from doc (original tokens={total_tokens})[/magenta]")
         return chunks
 
     def _partition_into_batches(self, docs: list[Document], batch_size: int) -> list[list[Document]]:
+        """Partition documents into batches primarily by token count.
+
+        The pipeline prefers token-based batching (batch_token_limit) over a fixed
+        document-count batch_size. batch_size is kept as a safety cap on the
+        number of docs per batch but token limits drive splitting.
+        """
         batch_token_limit = self._batch_token_limit()
 
         batches: list[list[Document]] = []
         current_batch: list[Document] = []
         current_tokens = 0
 
-        for doc in docs:
+        console.print(f"[cyan]Partitioning {len(docs)} docs using token-based batch limit {batch_token_limit} tokens[/cyan]")
+
+        for idx, doc in enumerate(docs, start=1):
             doc_tokens = len(self.encoding.encode(doc.page_content))
+            console.print(f"[cyan]Doc {idx}/{len(docs)}: {doc_tokens} tokens[/cyan]")
+
             subdocs = (
                 self._split_doc_into_sized_chunks(doc, batch_token_limit)
                 if doc_tokens > batch_token_limit
@@ -103,22 +119,31 @@ class ResilientEmbeddingPipeline:
             for subdoc in subdocs:
                 subdoc_tokens = len(self.encoding.encode(subdoc.page_content))
 
+                # If adding this subdoc would exceed the token limit, flush current batch
                 if current_batch and (current_tokens + subdoc_tokens) > batch_token_limit:
+                    console.print(f"[cyan]Flushing batch with {len(current_batch)} docs ({current_tokens} tokens) due to token limit[/cyan]")
                     batches.append(current_batch)
                     current_batch = []
                     current_tokens = 0
 
+                # Append subdoc
                 current_batch.append(subdoc)
                 current_tokens += subdoc_tokens
+                console.print(f"[cyan]Added subdoc ({subdoc_tokens} tokens). Current batch tokens={current_tokens}. Docs in batch={len(current_batch)}[/cyan]")
 
-                if len(current_batch) >= batch_size:
+                # Safety: if the batch grows too large by document count, flush it
+                if len(current_batch) >= max(1, batch_size * 10):
+                    # allow batch_size to act as a soft cap but only after a generous multiplier
+                    console.print(f"[yellow]Safety flush: batch reached doc-count cap {len(current_batch)} (soft cap {batch_size * 10})[/yellow]")
                     batches.append(current_batch)
                     current_batch = []
                     current_tokens = 0
 
         if current_batch:
+            console.print(f"[cyan]Final flush: appending last batch with {len(current_batch)} docs ({current_tokens} tokens)[/cyan]")
             batches.append(current_batch)
 
+        console.print(f"[green]Partitioned into {len(batches)} batches[/green]")
         return batches
 
     async def start_worker(self) -> None:
@@ -148,17 +173,23 @@ class ResilientEmbeddingPipeline:
 
     async def _process_request(self, request: EmbeddingRequest) -> EmbeddingRequest:
         request.status = "processing"
-        backoff = 1.0
+        # Start with a conservative initial backoff (seconds)
+        backoff = 4.0
 
         while request.retry_count < self.max_retries:
             try:
                 batch_tokens = self.limiter.count_tokens(request.docs)
+                console.print(f"[blue]Attempting to acquire tokens for request {request.request_id} ({batch_tokens} tokens)[/blue]")
                 await self.limiter.acquire(request.docs)
+                console.print(f"[blue]Acquired tokens for request {request.request_id} ({batch_tokens} tokens). Calling add_documents_with_retry()[/blue]")
 
-                console.print(
-                    f"[cyan]→ Processing request {request.request_id} "
-                    f"({len(request.docs)} docs, {batch_tokens} tokens)[/cyan]"
-                )
+                # Log vector store target and doc summaries
+                try:
+                    store_name = getattr(request.vector_store, 'collection_name', repr(request.vector_store))
+                except Exception:
+                    store_name = repr(request.vector_store)
+
+                console.print(f"[blue]→ Processing request {request.request_id} -> store={store_name} docs={len(request.docs)} tokens={batch_tokens}[/blue]")
 
                 await add_documents_with_retry(request.vector_store, request.docs)
 
@@ -166,7 +197,7 @@ class ResilientEmbeddingPipeline:
                 request.status = "completed"
                 console.print(
                     f"[green]✓ Request {request.request_id} completed "
-                    f"({len(request.docs)} docs)[/green]"
+                    f"({len(request.docs)} docs, {batch_tokens} tokens)[/green]"
                 )
                 self.request_history[request.request_id] = request
                 return request
@@ -175,6 +206,7 @@ class ResilientEmbeddingPipeline:
                 request.retry_count += 1
                 request.error = str(e)
 
+                # If we've exhausted retries, mark failed and return
                 if request.retry_count >= self.max_retries:
                     request.status = "failed"
                     self.request_history[request.request_id] = request
@@ -183,7 +215,28 @@ class ResilientEmbeddingPipeline:
                     )
                     return request
 
-                wait_time = backoff * (2 ** (request.retry_count - 1))
+                # Exponential backoff with jitter and an upper cap
+                base_wait = backoff * (2 ** (request.retry_count - 1))
+                # jitter +/-25%
+                jittered = base_wait * random.uniform(0.75, 1.25)
+                wait_time = min(60.0, jittered)
+
+                # If exception message contains rate-limit headers, try to parse remaining calls
+                try:
+                    msg = str(e)
+                    m = re.search(r"x[-_]trial[-_]endpoint[-_]call[-_]remaining\W*[:'=\"]\s*(\d+)", msg, re.IGNORECASE)
+                    if not m:
+                        m = re.search(r"x[-_]endpoint[-_]call[-_]remaining\W*[:'=\"]\s*(\d+)", msg, re.IGNORECASE)
+                    if m:
+                        remaining = int(m.group(1))
+                        console.print(f"[yellow]Rate-limit header remaining: {remaining}[/yellow]")
+                        # If very low remaining quota, wait longer before retrying
+                        if remaining < 20:
+                            wait_time = max(wait_time, 30.0)
+                except Exception:
+                    # Any parsing errors shouldn't break retry logic
+                    pass
+
                 console.print(
                     f"[yellow]↻ Request {request.request_id} retry {request.retry_count}/{self.max_retries} "
                     f"in {wait_time:.1f}s (Error: {e})[/yellow]"
