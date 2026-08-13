@@ -36,6 +36,7 @@ export function DataTable<T>({
   initialSortDirection = "asc",
   ariaLabel,
   pagination,
+  onRowClick,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -46,6 +47,7 @@ export function DataTable<T>({
   initialSortDirection?: SortDirection;
   ariaLabel?: string;
   pagination?: PaginationProps;
+  onRowClick?: (row: T) => void;
 }) {
   const [sortKey, setSortKey] = useState<string | undefined>(initialSortKey);
   const [sortDirection, setSortDirection] =
@@ -131,7 +133,11 @@ export function DataTable<T>({
         </TableHeader>
         <TableBody>
           {sorted.map((row) => (
-            <TableRow key={getRowKey(row)}>
+            <TableRow
+              key={getRowKey(row)}
+              className={onRowClick ? "cursor-pointer hover:bg-muted/50" : undefined}
+              onClick={() => onRowClick?.(row)}
+            >
               {columns.map((column) => (
                 <TableCell key={column.key} className={cn(column.className)}>
                   {column.cell(row)}

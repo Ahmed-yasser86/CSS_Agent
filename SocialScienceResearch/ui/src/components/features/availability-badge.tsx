@@ -18,19 +18,20 @@ export function AvailabilityBadge({
   availability,
   withLabel = true,
 }: {
-  availability: Availability;
+  availability?: Availability | null;
   withLabel?: boolean;
 }) {
-  const Icon = ICONS[availability];
+  const Icon = ICONS[availability ?? "unsupported"];
+  const label = availability ?? "unsupported";
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <Badge
             variant={
-              availability === "available"
+              label === "available"
                 ? "default"
-                : availability === "missing"
+                : label === "missing"
                   ? "secondary"
                   : "outline"
             }
@@ -38,10 +39,10 @@ export function AvailabilityBadge({
         }
       >
         <Icon className="size-3" aria-hidden />
-        {withLabel ? availabilityLabel[availability] : null}
-        <span className="sr-only">{availabilityLabel[availability]}</span>
+        {withLabel ? availabilityLabel[label] : null}
+        <span className="sr-only">{availabilityLabel[label]}</span>
       </TooltipTrigger>
-      <TooltipContent>{availabilityDescription[availability]}</TooltipContent>
+      <TooltipContent>{availabilityDescription[label]}</TooltipContent>
     </Tooltip>
   );
 }

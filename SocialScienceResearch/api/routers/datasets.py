@@ -23,7 +23,7 @@ from typing import Any
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from SocialScienceResearch.domain.dataset_models import (
     CreateDatasetRequest,
@@ -51,6 +51,30 @@ class DatasetMemberRow(BaseModel):
     """One member row projection (columns vary per dataset; extras allowed)."""
 
     model_config = ConfigDict(extra="allow")
+
+
+class UpdateDatasetRequest(BaseModel):
+    """PATCH body for ``PATCH .../datasets/{dataset_id}`` (``extra="forbid"``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    description: str | None = None
+
+
+class CombineDatasetsRequest(BaseModel):
+    """Body for ``POST .../datasets/combine`` (``extra="forbid"``).
+
+    Combines multiple datasets into a new dataset, optionally deduplicating
+    members and preserving lineage (which original dataset each member came from).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    description: str | None = None
+    dataset_ids: list[str] = Field(default_factory=list)
+    deduplicate: bool = True
 
 
 class DeleteProjectPayload(BaseModel):
@@ -194,6 +218,12 @@ def create_dataset(body: CreateDatasetRequest, request: Request) -> Dataset:
         body.description,
         entity_type=body.entity_type,
         include_raw=body.include_raw,
+        run_ids=body.run_ids,
+        channel_ids=body.channel_ids,
+        video_ids=body.video_ids,
+        member_ids=body.member_ids,
+        criteria=body.criteria,
+        variable_selection=body.variable_selection,
     )
 
 
@@ -223,6 +253,37 @@ def delete_dataset(dataset_id: str, request: Request) -> DeleteDatasetPayload:
     service = _datasets_service(request)
     service.delete_dataset(dataset_id)
     return DeleteDatasetPayload(dataset_id=dataset_id, deleted=True)
+
+
+@router.patch("/datasets/{dataset_id}", tags=["datasets"], response_model=Dataset)
+def patch_dataset(
+    dataset_id: str, body: UpdateDatasetRequest, request: Request
+) -> Dataset:
+    """Update dataset name and/or description."""
+    service = _datasets_service(request)
+    return service.update_dataset(dataset_id, body)
+
+
+@router.post("/datasets/combine", tags=["datasets"], response_model=Dataset)
+def combine_datasets(
+    body: CombineDatasetsRequest, request: Request
+) -> Dataset:
+    """Combine multiple datasets into a new dataset.
+
+    Members are deduplicated by default (based on the id_field of each member).
+    When deduplication is disabled, all members from all source datasets are included.
+    """
+    if not body.dataset_ids:
+        raise ValueError("at least one dataset_ids entry is required")
+    if len(body.dataset_ids) < 2:
+        raise ValueError("at least two dataset_ids are required for combining")
+    service = _datasets_service(request)
+    return service.combine_datasets(
+        name=body.name,
+        description=body.description,
+        dataset_ids=body.dataset_ids,
+        deduplicate=body.deduplicate,
+    )
 
 
 @router.get(

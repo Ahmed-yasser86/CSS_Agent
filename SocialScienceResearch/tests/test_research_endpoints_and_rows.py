@@ -340,6 +340,26 @@ def test_resolve_latest_rows_comment_scoped_and_recommendation(query_service) ->
     assert channels[0]["video_count"] == 5
 
 
+def test_recommendation_query_rows_ranked_by_feed_position(
+    repos, query_service
+) -> None:
+    # Insert an out-of-order edge (position None) to prove ranking, not
+    # insertion order.
+    repos[0].recommendations.save_recommendation(
+        RecommendationObservation(
+            observation_id="rec_unranked",
+            collection_run_id="run_b1",
+            source_video_id="v00",
+            recommended_video_id="v99",
+            position=None,
+            status=RecommendationStatus.OBSERVED,
+        )
+    )
+    rows = query_service.resolve_latest_rows("recommendation")
+    positions = [r["position"] for r in rows]
+    assert positions == [0, 1, 2, None]
+
+
 def test_resolve_latest_rows_unknown_entity_raises(query_service) -> None:
     with pytest.raises(ValueError):
         query_service.resolve_latest_rows("planet")

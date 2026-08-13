@@ -144,6 +144,7 @@ class ExplorerService:
         if filters:
             rows = evaluate_query(entity, self._group_from_filters(filters), rows)
         rows = self._enrich_ids(entity, rows)
+        rows = self._dedupe_rows(entity, rows)
         rows = self._ordered_rows(entity, rows, sort, descending)
         rows = self._ranked_rows(entity, rows)
 
@@ -167,6 +168,28 @@ class ExplorerService:
                 if meta.data_type != "list"
             ],
         )
+
+    # ------------------------------------------------------------------
+    def _dedupe_rows(
+        self, entity: str, rows: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Drop duplicate rows sharing the same primary id.
+
+        Historical Excel data may contain the same entity id in multiple rows
+        (e.g. written before upserts or from manual edits). The explorer is a
+        browsable *latest-state* view, so only the first occurrence per primary
+        id is kept, keeping the UI's row keys unique.
+        """
+        id_field = _ID_FIELD[entity]
+        seen: set[str] = set()
+        unique: list[dict[str, Any]] = []
+        for row in rows:
+            key = str(row.get(id_field) or "")
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            unique.append(row)
+        return unique
 
     # ------------------------------------------------------------------
     def get_row_raw(self, entity: str, entity_id: str) -> dict[str, Any] | None:
@@ -303,6 +326,19 @@ class ExplorerService:
     ) -> list[dict[str, Any]]:
         if sort is None:
             id_field = _ID_FIELD[entity]
+            if entity == "recommendation":
+                # Default order is the observed feed rank (same key as
+                # QueryService._recommendation_rows): grouped by source, then
+                # ascending "Up Next" rail position, unknown positions last.
+                return sorted(
+                    rows,
+                    key=lambda row: (
+                        str(row.get("source_video_id") or ""),
+                        row.get("position") is None,
+                        row.get("position") if row.get("position") is not None else 0,
+                        str(row.get("recommended_video_id") or ""),
+                    ),
+                )
             return sorted(rows, key=lambda row: (str(row[id_field] or ""),))
         if descending:
             present = [row for row in rows if row.get(sort) is not None]

@@ -1,0 +1,57 @@
+- generic [active] [ref=f5e1]:
+  - generic [ref=f5e2]:
+    - banner [ref=f5e3]:
+      - generic [ref=f5e4]:
+        - link "Social Science Research" [ref=f5e5] [cursor=pointer]:
+          - /url: /
+        - navigation "Primary" [ref=f5e10]:
+          - link "Workspace" [ref=f5e11] [cursor=pointer]:
+            - /url: /
+          - link "Collect" [ref=f5e15] [cursor=pointer]:
+            - /url: /collect
+          - link "Explorer" [ref=f5e20] [cursor=pointer]:
+            - /url: /explore
+          - link "Network" [ref=f5e26] [cursor=pointer]:
+            - /url: /network
+          - link "Samples" [ref=f5e33] [cursor=pointer]:
+            - /url: /samples
+          - link "Datasets" [ref=f5e39] [cursor=pointer]:
+            - /url: /datasets
+          - link "Projects" [ref=f5e43] [cursor=pointer]:
+            - /url: /projects
+          - link "Runs" [ref=f5e47] [cursor=pointer]:
+            - /url: /runs
+        - generic [ref=f5e52]:
+          - button "Switch to dark mode" [ref=f5e53]
+          - button "Jobs tray" [ref=f5e56]:
+            - generic [ref=f5e57]: Jobs
+          - button "Search… Ctrl K" [ref=f5e58]:
+            - generic [ref=f5e62]: Search…
+            - generic:
+              - text: Ctrl
+              - generic: K
+          - generic [ref=f5e63]:
+            - heading "Command Palette" [level=2] [ref=f5e64]
+            - paragraph [ref=f5e65]: Search for a command to run...
+    - main [ref=f5e66]:
+      - generic [ref=f5e68]:
+        - navigation "Breadcrumb" [ref=f5e69]:
+          - link "Workspace" [ref=f5e70] [cursor=pointer]:
+            - /url: /
+          - generic [ref=f5e73]: aqz-KE-bpKQ
+        - generic [ref=f5e74]:
+          - generic [ref=f5e75]:
+            - heading "aqz-KE-bpKQ" [level=1] [ref=f5e76]
+            - code [ref=f5e77]: video
+          - generic [ref=f5e78]:
+            - tablist [ref=f5e79]:
+              - tab "Overview" [selected] [ref=f5e80]
+              - tab "Engagement" [ref=f5e81]
+              - tab "Comments" [ref=f5e82]
+              - tab "Recommendations" [ref=f5e83]
+            - tabpanel [ref=f5e84]:
+              - status [ref=f5e85]:
+                - paragraph [ref=f5e88]: Loading video…
+    - contentinfo [ref=f5e89]: Computational Social Science Research Workbench · data is observed, never estimated · missing values are reported explicitly
+  - button "Open Next.js Dev Tools" [ref=f5e95] [cursor=pointer]
+  - alert [ref=f5e99]

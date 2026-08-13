@@ -224,6 +224,20 @@ def test_create_dataset_snapshot(service_env) -> None:
     assert service.member_count(dataset.dataset_id) == 6
 
 
+def test_create_dataset_member_ids_scopes_rows(service_env) -> None:
+    repos, settings = service_env
+    service = DatasetService(repos, settings)
+    dataset = service.create_dataset(
+        "sample subset",
+        entity_type="video",
+        member_ids=["v01", "v03"],
+    )
+    assert dataset.member_count == 2
+    assert dataset.source_projection["scope"]["member_ids"] == ["v01", "v03"]
+    members = service.members(dataset.dataset_id)
+    assert {m["video_id"] for m in members} == {"v01", "v03"}
+
+
 def test_create_from_project_honors_query_and_variable_selection(service_env) -> None:
     repos, settings = service_env
     projects = ProjectService(repos)
@@ -500,3 +514,68 @@ def test_api_project_and_dataset_flow(client) -> None:
     assert resp.status_code == 200
     resp = client.get(f"{PREFIX}/projects/{project_id}")
     assert resp.status_code == 400
+
+
+def test_api_project_items_flow(client) -> None:
+    """Project items CRUD works end-to-end (regression: service must not touch
+    a non-existent ``repos.projects`` attribute)."""
+    resp = client.post(
+        f"{PREFIX}/projects",
+        json={
+            "name": "Items project",
+            "targets": [{"kind": "channel", "url": "https://www.youtube.com/@b7"}],
+            "variable_selection": ["video_id", "view_count"],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    project_id = resp.json()["project_id"]
+
+    resp = client.get(f"{PREFIX}/projects/{project_id}/items")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+    resp = client.post(
+        f"{PREFIX}/projects/{project_id}/items",
+        json={
+            "name": "Item A",
+            "item_type": "sample_group",
+            "sample_ids": ["s1"],
+            "dataset_ids": [],
+            "tags": ["t1"],
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    item_id = body["item_id"]
+    assert body["project_id"] == project_id
+    assert body["name"] == "Item A"
+    assert body["sample_ids"] == ["s1"]
+
+    resp = client.post(
+        f"{PREFIX}/projects/{project_id}/items",
+        json={"name": "Item B", "item_type": "mixed", "sample_ids": [], "dataset_ids": ["d1"]},
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = client.get(f"{PREFIX}/projects/{project_id}/items")
+    assert resp.status_code == 200
+    assert {item["name"] for item in resp.json()} == {"Item A", "Item B"}
+
+    resp = client.get(f"{PREFIX}/projects/{project_id}/items/{item_id}")
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Item A"
+
+    resp = client.patch(
+        f"{PREFIX}/projects/{project_id}/items/{item_id}",
+        json={"name": "Item A v2"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Item A v2"
+
+    resp = client.delete(f"{PREFIX}/projects/{project_id}/items/{item_id}")
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] is True
+
+    resp = client.get(f"{PREFIX}/projects/{project_id}/items")
+    assert resp.status_code == 200
+    assert {item["name"] for item in resp.json()} == {"Item B"}

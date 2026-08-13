@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Pencil } from "lucide-react";
 import type { CollectionRun, RunType } from "@/lib/types";
-import { useRuns } from "@/services/queries";
+import { useRuns, useUpdateRunName } from "@/services/queries";
 import { DataTable, type Column } from "@/components/features/data-table";
 import { RunStatusBadge } from "@/components/features/run-status-badge";
 import { LoadingState, ErrorState, EmptyState } from "@/components/features/state";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 
 const TYPE_OPTIONS: { value: RunType | "all"; label: string }[] = [
   { value: "all", label: "All types" },
@@ -17,9 +19,67 @@ const TYPE_OPTIONS: { value: RunType | "all"; label: string }[] = [
   { value: "recommendation", label: "Recommendations" },
 ];
 
+function RunNameCell({
+  run,
+  onRename,
+}: {
+  run: CollectionRun;
+  onRename: (runId: string, name: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(run.name ?? "");
+
+  const commit = () => {
+    const trimmed = value.trim();
+    if (trimmed && trimmed !== (run.name ?? "")) onRename(run.run_id, trimmed);
+    else setValue(run.name ?? "");
+    setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <span className="group flex items-center gap-1.5">
+        <span className="max-w-[16rem] truncate text-sm">
+          {run.name || <span className="text-muted-foreground">Untitled</span>}
+        </span>
+        <button
+          type="button"
+          aria-label={`Rename run ${run.run_id}`}
+          onClick={() => {
+            setValue(run.name ?? "");
+            setEditing(true);
+          }}
+          className="rounded p-0.5 text-muted-foreground opacity-0 outline-none transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+        >
+          <Pencil className="size-3.5" aria-hidden />
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <Input
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit();
+        else if (e.key === "Escape") {
+          setValue(run.name ?? "");
+          setEditing(false);
+        }
+      }}
+      onBlur={commit}
+      autoFocus
+      aria-label={`Name for run ${run.run_id}`}
+      className="h-7 w-48 text-sm"
+    />
+  );
+}
+
 export function RunLedger() {
   const [runType, setRunType] = useState<RunType | "all">("all");
   const runsQuery = useRuns(runType === "all" ? undefined : runType);
+  const renameMutation = useUpdateRunName();
 
   const columns: Column<CollectionRun>[] = [
     {
@@ -34,6 +94,15 @@ export function RunLedger() {
         >
           {r.run_id}
         </Link>
+      ),
+    },
+    {
+      key: "name",
+      header: "Name",
+      sortable: true,
+      sortValue: (r) => r.name ?? "",
+      cell: (r) => (
+        <RunNameCell run={r} onRename={(runId, name) => renameMutation.mutate({ runId, name })} />
       ),
     },
     {

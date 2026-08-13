@@ -25,7 +25,7 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/features/stat
 import { DatasetBuilder } from "@/components/features/datasets/dataset-builder";
 import { QualityPanel } from "@/components/features/datasets/quality-panel";
 import {
-  getDatasets,
+  listDatasets,
   getDatasetMembers,
   getDatasetExportUrl,
   deleteDataset,
@@ -43,8 +43,8 @@ export function DatasetLibrary() {
   const [selectedTab, setSelectedTab] = useState<"quality" | "members">("quality");
 
   const query = useQuery({
-    queryKey: ["datasets"],
-    queryFn: () => getDatasets(),
+    queryKey: ["datasets", "library"],
+    queryFn: () => listDatasets(),
   });
 
   const del = useMutation({

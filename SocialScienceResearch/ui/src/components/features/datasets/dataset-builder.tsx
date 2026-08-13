@@ -24,14 +24,25 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { getProjects, createDataset } from "@/services/datasets";
+import { listProjects, createDataset, getChannels, getRuns } from "@/services/datasets";
+import { useResearchVariables } from "@/services/queries";
 import type {
   CreateDatasetInput,
   Dataset,
   DatasetEntityType,
   ResearchProject,
+  Channel,
 } from "@/lib/dataset-types";
+import type { QueryGroup, CollectionRun } from "@/lib/types";
 import { ErrorState } from "@/components/features/state";
+import { CriteriaFilterBar } from "@/components/features/criteria-filter-bar";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Combobox } from "@/components/ui/combobox";
 
 const ENTITY_TYPE_OPTIONS: { value: DatasetEntityType; label: string }[] = [
   { value: "video", label: "Video" },
@@ -41,10 +52,17 @@ const ENTITY_TYPE_OPTIONS: { value: DatasetEntityType; label: string }[] = [
   { value: "author", label: "Author" },
 ];
 
-const SOURCE_OPTIONS: { value: "project" | "raw"; label: string }[] = [
-  { value: "raw", label: "Direct (raw rows)" },
+const SOURCE_OPTIONS = [
+  { value: "raw", label: "Whole corpus" },
   { value: "project", label: "From project" },
-];
+  { value: "scope", label: "By runs/channels/videos" },
+] as const;
+
+const SCOPE_MODES = [
+  { value: "runs", label: "Runs" },
+  { value: "channels", label: "Channels" },
+  { value: "videos", label: "Videos" },
+] as const;
 
 export function DatasetBuilder({
   open,
@@ -60,17 +78,38 @@ export function DatasetBuilder({
   const [description, setDescription] = useState("");
   const [entityType, setEntityType] =
     useState<DatasetEntityType>("video");
-  const [sourceMode, setSourceMode] = useState<"project" | "raw">("raw");
+  const [sourceMode, setSourceMode] = useState<"project" | "raw" | "scope">("raw");
   const [projectId, setProjectId] = useState("");
   const [includeRaw, setIncludeRaw] = useState(false);
+  const [scopeMode, setScopeMode] = useState<"runs" | "channels" | "videos">("runs");
+  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
+  const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
+  const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
+  const [criteriaGroup, setCriteriaGroup] = useState<QueryGroup | null>(null);
+  const [variableSelection, setVariableSelection] = useState<string[]>([]);
 
   const projectsQuery = useQuery({
     queryKey: ["projects"],
-    queryFn: () => getProjects(),
+    queryFn: () => listProjects(),
   });
 
   const projects = projectsQuery.data?.items ?? [];
   const projectsLoading = projectsQuery.isLoading;
+
+  const runsQuery = useQuery({
+    queryKey: ["runs", "all"],
+    queryFn: () => getRuns(),
+    enabled: sourceMode === "scope" && scopeMode === "runs",
+  });
+
+  const channelsQuery = useQuery({
+    queryKey: ["channels"],
+    queryFn: () => getChannels(),
+    enabled: sourceMode === "scope" && scopeMode === "channels",
+  });
+
+  const variablesQuery = useResearchVariables(entityType);
+  const availableVariables = variablesQuery.data ?? [];
 
   const create = useMutation({
     mutationFn: () => {
@@ -81,6 +120,13 @@ export function DatasetBuilder({
       };
       if (description.trim()) body.description = description.trim();
       if (sourceMode === "project" && projectId) body.project_id = projectId;
+      if (sourceMode === "scope") {
+        if (scopeMode === "runs" && selectedRunIds.length) body.run_ids = selectedRunIds;
+        if (scopeMode === "channels" && selectedChannelIds.length) body.channel_ids = selectedChannelIds;
+        if (scopeMode === "videos" && selectedVideoIds.length) body.video_ids = selectedVideoIds;
+        if (criteriaGroup) body.criteria = criteriaGroup;
+        if (variableSelection.length) body.variable_selection = variableSelection;
+      }
       return createDataset(body);
     },
     onSuccess: (dataset) => {
@@ -108,6 +154,12 @@ export function DatasetBuilder({
     setSourceMode("raw");
     setProjectId("");
     setIncludeRaw(false);
+    setScopeMode("runs");
+    setSelectedRunIds([]);
+    setSelectedChannelIds([]);
+    setSelectedVideoIds([]);
+    setCriteriaGroup(null);
+    setVariableSelection([]);
   }
 
   function handleOpenChange(next: boolean) {
@@ -125,6 +177,32 @@ export function DatasetBuilder({
         description: "Choose the project the dataset should be built from.",
       });
       return;
+    }
+    if (sourceMode === "scope") {
+      if (scopeMode === "runs" && selectedRunIds.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Select at least one run",
+          description: "Choose runs to include in the dataset.",
+        });
+        return;
+      }
+      if (scopeMode === "channels" && selectedChannelIds.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Select at least one channel",
+          description: "Choose channels to include in the dataset.",
+        });
+        return;
+      }
+      if (scopeMode === "videos" && selectedVideoIds.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Select at least one video",
+          description: "Choose videos to include in the dataset.",
+        });
+        return;
+      }
     }
     create.mutate();
   }
@@ -213,7 +291,7 @@ export function DatasetBuilder({
                 <Select
                   value={projectId}
                   onValueChange={(value) => setProjectId(value ?? "")}
-                  items={projects.map((project) => ({
+                  items={projects.map((project: ResearchProject) => ({
                     value: project.project_id,
                     label: project.name,
                   }))}
@@ -239,6 +317,178 @@ export function DatasetBuilder({
                 </Select>
               )}
             </Field>
+          ) : sourceMode === "scope" ? (
+            <>
+              <Field label="Scope type">
+                <Tabs
+                  value={scopeMode}
+                  onValueChange={(value) => setScopeMode(value as "runs" | "channels" | "videos")}
+                  className="w-full"
+                >
+                  <TabsList className="grid w-full grid-cols-3">
+                    {SCOPE_MODES.map((mode) => (
+                      <TabsTrigger key={mode.value} value={mode.value}>
+                        {mode.label}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+              </Field>
+
+              {scopeMode === "runs" && (
+                <Field label="Select runs">
+                  {runsQuery.isLoading ? (
+                    <div className="text-xs text-muted-foreground">Loading runs…</div>
+                  ) : runsQuery.isError ? (
+                    <ErrorState
+                      message={
+                        runsQuery.error instanceof Error
+                          ? runsQuery.error.message
+                          : "Failed to load runs"
+                      }
+                      retry={() => runsQuery.refetch()}
+                    />
+                  ) : (
+                    <div className="max-h-60 overflow-auto space-y-1 rounded-md border bg-muted/20 p-2">
+                      {runsQuery.data?.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No runs found.</p>
+                      ) : (
+                        runsQuery.data?.map((run: CollectionRun) => (
+                          <label
+                            key={run.run_id}
+                            className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedRunIds.includes(run.run_id)}
+                              onChange={(e) =>
+                                setSelectedRunIds((prev) =>
+                                  e.target.checked
+                                    ? [...prev, run.run_id]
+                                    : prev.filter((id) => id !== run.run_id)
+                                )
+                              }
+                              className="size-4"
+                            />
+                            <span className="font-mono text-xs truncate">{run.run_id}</span>
+                            <Badge variant="outline" className="text-[10px]">
+                              {run.status}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground ml-auto">
+                              {new Date(run.started_at).toLocaleDateString()}
+                            </span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  )}
+                  {selectedRunIds.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedRunIds.length} run(s) selected
+                    </p>
+                  )}
+                </Field>
+              )}
+
+              {scopeMode === "channels" && (
+                <Field label="Select channels">
+                  {channelsQuery.isLoading ? (
+                    <div className="text-xs text-muted-foreground">Loading channels…</div>
+                  ) : channelsQuery.isError ? (
+                    <ErrorState
+                      message={
+                        channelsQuery.error instanceof Error
+                          ? channelsQuery.error.message
+                          : "Failed to load channels"
+                      }
+                      retry={() => channelsQuery.refetch()}
+                    />
+                  ) : (
+                    <div className="max-h-60 overflow-auto space-y-1 rounded-md border bg-muted/20 p-2">
+                      {channelsQuery.data?.items.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No channels found.</p>
+                      ) : (
+                        channelsQuery.data?.items.map((channel: Channel) => (
+                          <label
+                            key={channel.channel_id}
+                            className="flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedChannelIds.includes(channel.channel_id)}
+                              onChange={(e) =>
+                                setSelectedChannelIds((prev) =>
+                                  e.target.checked
+                                    ? [...prev, channel.channel_id]
+                                    : prev.filter((id) => id !== channel.channel_id)
+                                )
+                              }
+                              className="size-4"
+                            />
+                            <span className="font-mono text-xs truncate">{channel.channel_id}</span>
+                            <span className="text-xs text-muted-foreground ml-auto truncate max-w-[200px]">
+                              {channel.title ?? "—"}
+                            </span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  )}
+                  {selectedChannelIds.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedChannelIds.length} channel(s) selected
+                    </p>
+                  )}
+                </Field>
+              )}
+
+              {scopeMode === "videos" && (
+                <Field label="Select videos">
+                  <div className="max-h-60 overflow-auto space-y-1 rounded-md border bg-muted/20 p-2">
+                    <p className="text-xs text-muted-foreground">
+                      Video selection by channel coming soon. For now, use runs or channels scope.
+                    </p>
+                  </div>
+                  {selectedVideoIds.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedVideoIds.length} video(s) selected
+                    </p>
+                  )}
+                </Field>
+              )}
+
+              <Field label="Criteria filters">
+                <CriteriaFilterBar
+                  entity={entityType}
+                  onChange={setCriteriaGroup}
+                />
+              </Field>
+
+              <Field label="Variable selection">
+                {availableVariables.length > 0 ? (
+                  <Combobox
+                    items={availableVariables.map((v) => ({
+                      value: v.name,
+                      label: `${v.name} (${v.data_type})`,
+                    }))}
+                    value={variableSelection}
+                    onChange={(value) => setVariableSelection(Array.isArray(value) ? value : [value])}
+                    placeholder="Select variables…"
+                    multiple
+                    searchPlaceholder="Search variables…"
+                  />
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    No variables available for this entity type.
+                  </p>
+                )}
+                {variableSelection.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {variableSelection.length} variable(s) selected
+                  </p>
+                )}
+              </Field>
+            </>
           ) : null}
 
           <div className="flex items-center gap-2">

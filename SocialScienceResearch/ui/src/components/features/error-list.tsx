@@ -7,7 +7,7 @@ const RETRYABLE_HINTS: Record<string, string> = {
   network: "Transient network issue — retry the collection.",
   rate_limit: "The source rate-limited the request — wait and retry.",
   recommendation_unsupported:
-    "The collection library (yt-dlp) cannot provide recommendations. This is a documented limitation, not a zero result.",
+    "All recommendation providers returned no data (library fields, the INNERTUBE /next endpoint, and watch-page dumps). Recorded as an explicit error, never fabricated.",
 };
 
 export function ErrorList({ errors }: { errors: CollectionError[] }) {

@@ -6,6 +6,88 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/social-science/channels": {
+      "get": {
+        "tags": [
+          "corpus"
+        ],
+        "summary": "List Channels",
+        "description": "All channels (global picker for comparison/explorer views).",
+        "operationId": "list_channels_api_v1_social_science_channels_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive text search over title/handle/description",
+              "title": "Q"
+            },
+            "description": "Case-insensitive text search over title/handle/description"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from the previous page",
+              "title": "Cursor"
+            },
+            "description": "Opaque cursor from the previous page"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_ChannelPayload_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/social-science/videos/{video_id}/comments/analytics/participation": {
       "get": {
         "tags": [
@@ -75,6 +157,58 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ReplyMetrics"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/videos/{video_id}/comments/{comment_id}/tree": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Comment Tree",
+        "description": "Full comment tree with all nested replies for a root comment.",
+        "operationId": "comment_tree_api_v1_social_science_videos__video_id__comments__comment_id__tree_get",
+        "parameters": [
+          {
+            "name": "video_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Video Id"
+            }
+          },
+          {
+            "name": "comment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Comment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentTreePayload"
                 }
               }
             }
@@ -997,6 +1131,99 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Patch Dataset",
+        "description": "Update dataset name and/or description.",
+        "operationId": "patch_dataset_api_v1_social_science_datasets__dataset_id__patch",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Dataset Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDatasetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dataset"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/datasets/combine": {
+      "post": {
+        "tags": [
+          "datasets"
+        ],
+        "summary": "Combine Datasets",
+        "description": "Combine multiple datasets into a new dataset.\n\nMembers are deduplicated by default (based on the id_field of each member).\nWhen deduplication is disabled, all members from all source datasets are included.",
+        "operationId": "combine_datasets_api_v1_social_science_datasets_combine_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CombineDatasetsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dataset"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/social-science/datasets/{dataset_id}/members": {
@@ -1672,6 +1899,516 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ChannelProjection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/projects/{project_id}/items": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Create Project Item",
+        "description": "Create a new project item within a project.",
+        "operationId": "create_project_item_api_v1_social_science_projects__project_id__items_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectItemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "List Project Items",
+        "description": "List all items within a project.",
+        "operationId": "list_project_items_api_v1_social_science_projects__project_id__items_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectItem"
+                  },
+                  "title": "Response List Project Items Api V1 Social Science Projects  Project Id  Items Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/projects/{project_id}/items/{item_id}": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Get Project Item",
+        "description": "Get a specific project item.",
+        "operationId": "get_project_item_api_v1_social_science_projects__project_id__items__item_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Update Project Item",
+        "description": "Update a project item.",
+        "operationId": "update_project_item_api_v1_social_science_projects__project_id__items__item_id__patch",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectItemRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Delete Project Item",
+        "description": "Delete a project item.",
+        "operationId": "delete_project_item_api_v1_social_science_projects__project_id__items__item_id__delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/projects/{project_id}/items/{item_id}/samples": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Add Samples To Item",
+        "description": "Add sample IDs to a project item. Body: {\"sample_ids\": [...]}.",
+        "operationId": "add_samples_to_item_api_v1_social_science_projects__project_id__items__item_id__samples_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Remove Samples From Item",
+        "description": "Remove sample IDs from a project item. Body: {\"sample_ids\": [...]}.",
+        "operationId": "remove_samples_from_item_api_v1_social_science_projects__project_id__items__item_id__samples_delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/projects/{project_id}/items/{item_id}/datasets": {
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Add Datasets To Item",
+        "description": "Add dataset IDs to a project item. Body: {\"dataset_ids\": [...]}.",
+        "operationId": "add_datasets_to_item_api_v1_social_science_projects__project_id__items__item_id__datasets_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "projects"
+        ],
+        "summary": "Remove Datasets From Item",
+        "description": "Remove dataset IDs from a project item. Body: {\"dataset_ids\": [...]}.",
+        "operationId": "remove_datasets_from_item_api_v1_social_science_projects__project_id__items__item_id__datasets_delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectItem"
                 }
               }
             }
@@ -2559,6 +3296,56 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Update Run",
+        "operationId": "update_run_api_v1_social_science_runs__run_id__patch",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/social-science/runs/{run_id}/errors": {
@@ -2607,32 +3394,23 @@
         }
       }
     },
-    "/api/v1/social-science/channels": {
+    "/api/v1/social-science/runs/{run_id}/videos": {
       "get": {
         "tags": [
-          "corpus"
+          "runs"
         ],
-        "summary": "List Channels",
-        "description": "All channels (global picker for comparison/explorer views).",
-        "operationId": "list_channels_api_v1_social_science_channels_get",
+        "summary": "Run Videos",
+        "description": "List videos collected (first discovered) in a run.",
+        "operationId": "run_videos_api_v1_social_science_runs__run_id__videos_get",
         "parameters": [
           {
-            "name": "q",
-            "in": "query",
-            "required": false,
+            "name": "run_id",
+            "in": "path",
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Case-insensitive text search over title/handle/description",
-              "title": "Q"
-            },
-            "description": "Case-insensitive text search over title/handle/description"
+              "type": "string",
+              "title": "Run Id"
+            }
           },
           {
             "name": "cursor",
@@ -2671,7 +3449,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Paginated_ChannelPayload_"
+                  "$ref": "#/components/schemas/RunVideosPayload"
                 }
               }
             }
@@ -3452,6 +4230,48 @@
         }
       }
     },
+    "/api/v1/social-science/sampling/advanced": {
+      "post": {
+        "tags": [
+          "sampling"
+        ],
+        "summary": "Sample Advanced",
+        "description": "Advanced sampling with complex filter combinations across channels, videos, and users.\n\nSupports researcher scenarios:\n- Sample/population of specific user comments across all videos and channels\n- Sample/population within specific channel(s)\n- Sample/population of specific users with their IDs\n- Sample/population of non-specified users across one channel but among specified videos\n- Video filters within same channel (date range, type, duration, views, etc.)\n- Multiple channels among specific period",
+        "operationId": "sample_advanced_api_v1_social_science_sampling_advanced_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdvancedSamplingSpec"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SamplingResultPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/social-science/videos/{video_id}/engagement": {
       "get": {
         "tags": [
@@ -3720,6 +4540,113 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Paginated_ThreadPayload_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/videos/{video_id}/comments/stats": {
+      "get": {
+        "tags": [
+          "analytics"
+        ],
+        "summary": "Video Comment Stats",
+        "description": "Comment statistics for a video:\n- max_replies: maximum reply_count from comment observations\n- max_unique_repliers: for the comment with max replies, count distinct author_ids of its replies\n- total_replies: sum of all reply_counts\n- total_unique_repliers: count of distinct author_ids across all replies",
+        "operationId": "video_comment_stats_api_v1_social_science_videos__video_id__comments_stats_get",
+        "parameters": [
+          {
+            "name": "video_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Video Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommentStatsPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/system/folders": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "System Folders",
+        "description": "Return data folder paths from RepositorySettings.",
+        "operationId": "system_folders_api_v1_social_science_system_folders_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemFoldersPayload"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/export": {
+      "post": {
+        "tags": [
+          "export"
+        ],
+        "summary": "Export Data",
+        "description": "Export selected data to Excel file.\n\nAccepts entity_type (video|comment|channel|run|sample|dataset), optional ids[],\noptional columns[], and optional filename. Returns an Excel file download.",
+        "operationId": "export_data_api_v1_social_science_export_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportResponse"
                 }
               }
             }
@@ -4137,6 +5064,389 @@
   },
   "components": {
     "schemas": {
+      "AdvancedSamplingSpec": {
+        "properties": {
+          "strategy": {
+            "$ref": "#/components/schemas/SamplingStrategy"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Percent"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "strata": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strata"
+          },
+          "sample_per_stratum": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Per Stratum"
+          },
+          "date_from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date From"
+          },
+          "date_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date To"
+          },
+          "top_n": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top N"
+          },
+          "channel_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Channel Ids"
+          },
+          "run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Ids"
+          },
+          "video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Video Ids"
+          },
+          "author_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Author Ids"
+          },
+          "exclude_author_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exclude Author Ids"
+          },
+          "author_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Author Names"
+          },
+          "exclude_author_names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Exclude Author Names"
+          },
+          "video_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Type"
+          },
+          "duration_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Min"
+          },
+          "duration_max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Max"
+          },
+          "views_min": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Views Min"
+          },
+          "views_max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Views Max"
+          },
+          "upload_hour": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Hour"
+          },
+          "upload_weekday": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upload Weekday"
+          },
+          "keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Keywords"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Categories"
+          },
+          "min_likes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Likes"
+          },
+          "max_likes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Likes"
+          },
+          "min_replies": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Replies"
+          },
+          "max_replies": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Replies"
+          },
+          "only_roots": {
+            "type": "boolean",
+            "title": "Only Roots",
+            "default": false
+          },
+          "only_replies": {
+            "type": "boolean",
+            "title": "Only Replies",
+            "default": false
+          },
+          "is_author": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Author"
+          },
+          "comment_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Comment Keywords"
+          },
+          "overlap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "video",
+                  "channel"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overlap"
+          },
+          "overlap_min": {
+            "type": "integer",
+            "title": "Overlap Min",
+            "default": 2
+          },
+          "overlap_video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Overlap Video Ids"
+          },
+          "overlap_channel_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Overlap Channel Ids"
+          },
+          "entity_type": {
+            "type": "string",
+            "enum": [
+              "video",
+              "comment"
+            ],
+            "title": "Entity Type",
+            "default": "video"
+          },
+          "include_all_channels": {
+            "type": "boolean",
+            "title": "Include All Channels",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "strategy"
+        ],
+        "title": "AdvancedSamplingSpec",
+        "description": "Advanced sampling specification for cross-channel, multi-video, and user-based sampling.\n\nSupports complex researcher scenarios:\n- Sample/population of specific user comments across all videos and channels\n- Sample/population within specific channel(s)\n- Sample/population of specific users with their IDs\n- Sample/population of non-specified users across one channel but among specified videos\n- Video filters within same channel (date range, type, duration, views, etc.)\n- Multiple channels among specific period\n- Combination of channel IDs, video IDs, author IDs with sampling strategies"
+      },
       "AuthorCommentCount": {
         "properties": {
           "author_id": {
@@ -4173,6 +5483,76 @@
         ],
         "title": "AuthorCommentCount",
         "description": "Comment counts for one distinct author."
+      },
+      "Channel": {
+        "properties": {
+          "channel_id": {
+            "type": "string",
+            "title": "Channel Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "subscriber_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscriber Count"
+          },
+          "video_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Count"
+          },
+          "view_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "View Count"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "channel_id"
+        ],
+        "title": "Channel",
+        "description": "Lightweight channel representation for listing."
       },
       "ChannelComparisonRequest": {
         "properties": {
@@ -4860,6 +6240,17 @@
             ],
             "title": "Collect Comments"
           },
+          "scrape_all_comments": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scrape All Comments"
+          },
           "max_comments_per_video": {
             "anyOf": [
               {
@@ -4980,6 +6371,42 @@
                 "type": "null"
               }
             ]
+          },
+          "include_live_videos": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Include Live Videos"
+          },
+          "video_tabs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Video Tabs"
+          },
+          "scrape_live_only": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scrape Live Only"
           }
         },
         "additionalProperties": false,
@@ -5038,6 +6465,44 @@
         ],
         "title": "ColumnCoverage",
         "description": "Missing-value statistics for one column of a dataset's stored rows."
+      },
+      "CombineDatasetsRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "dataset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Dataset Ids"
+          },
+          "deduplicate": {
+            "type": "boolean",
+            "title": "Deduplicate",
+            "default": true
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CombineDatasetsRequest",
+        "description": "Body for ``POST .../datasets/combine`` (``extra=\"forbid\"``).\n\nCombines multiple datasets into a new dataset, optionally deduplicating\nmembers and preserving lineage (which original dataset each member came from)."
       },
       "CommentPayload": {
         "properties": {
@@ -5136,6 +6601,39 @@
             "type": "string",
             "title": "First Observed Run Id"
           },
+          "like_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Like Count"
+          },
+          "reply_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply Count"
+          },
+          "is_removed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Removed"
+          },
           "raw_json": {
             "additionalProperties": true,
             "type": "object",
@@ -5150,6 +6648,72 @@
           "first_observed_run_id"
         ],
         "title": "CommentPayload"
+      },
+      "CommentStatsPayload": {
+        "properties": {
+          "video_id": {
+            "type": "string",
+            "title": "Video Id"
+          },
+          "max_replies": {
+            "type": "integer",
+            "title": "Max Replies",
+            "default": 0
+          },
+          "max_unique_repliers": {
+            "type": "integer",
+            "title": "Max Unique Repliers",
+            "default": 0
+          },
+          "total_replies": {
+            "type": "integer",
+            "title": "Total Replies",
+            "default": 0
+          },
+          "total_unique_repliers": {
+            "type": "integer",
+            "title": "Total Unique Repliers",
+            "default": 0
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "video_id"
+        ],
+        "title": "CommentStatsPayload",
+        "description": "Comment statistics for a video."
+      },
+      "CommentTreePayload": {
+        "properties": {
+          "comment": {
+            "$ref": "#/components/schemas/CommentPayload"
+          },
+          "replies": {
+            "items": {
+              "$ref": "#/components/schemas/CommentTreePayload"
+            },
+            "type": "array",
+            "title": "Replies"
+          },
+          "total_replies": {
+            "type": "integer",
+            "title": "Total Replies",
+            "default": 0
+          },
+          "max_depth": {
+            "type": "integer",
+            "title": "Max Depth",
+            "default": 0
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "comment"
+        ],
+        "title": "CommentTreePayload",
+        "description": "Full comment tree with nested replies for a root comment."
       },
       "ComparisonMetricRow": {
         "properties": {
@@ -5374,6 +6938,53 @@
             "type": "boolean",
             "title": "Include Raw",
             "default": false
+          },
+          "run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Ids"
+          },
+          "channel_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Channel Ids"
+          },
+          "video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Video Ids"
+          },
+          "member_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Member Ids"
+          },
+          "criteria": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Criteria"
+          },
+          "variable_selection": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Variable Selection"
           }
         },
         "additionalProperties": false,
@@ -5383,6 +6994,63 @@
         ],
         "title": "CreateDatasetRequest",
         "description": "Body for ``POST .../datasets`` (``extra=\"forbid\"``).\n\nWhen ``project_id`` is set the dataset is built from the project's research\nquery and variable selection; otherwise a plain dataset snapshots the whole\n``entity_type`` population. ``entity_type`` is the corpus slice in both\ncases and is only optional when the project's research query names it."
+      },
+      "CreateProjectItemRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "item_type": {
+            "type": "string",
+            "enum": [
+              "sample_group",
+              "dataset_group",
+              "mixed"
+            ],
+            "title": "Item Type",
+            "default": "mixed"
+          },
+          "sample_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sample Ids"
+          },
+          "dataset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Dataset Ids"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "CreateProjectItemRequest",
+        "description": "Body for ``POST .../projects/{project_id}/items`` (``extra=\"forbid\"``)."
       },
       "CreateProjectRequest": {
         "properties": {
@@ -6101,6 +7769,66 @@
         ],
         "title": "ExploreResult",
         "description": "Paginated explorer page for one entity."
+      },
+      "ExportRequest": {
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ids"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "entity_type"
+        ],
+        "title": "ExportRequest",
+        "description": "Request to export selected data to Excel."
+      },
+      "ExportResponse": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "row_count": {
+            "type": "integer",
+            "title": "Row Count"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "filename",
+          "row_count"
+        ],
+        "title": "ExportResponse",
+        "description": "Response for export endpoint (file download handled separately)."
       },
       "HTTPValidationError": {
         "properties": {
@@ -6987,6 +8715,50 @@
           "items"
         ],
         "title": "Paginated[ChannelPayload]"
+      },
+      "Paginated_Channel_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Channel"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Paginated[Channel]"
       },
       "Paginated_CommentPayload_": {
         "properties": {
@@ -8076,6 +9848,85 @@
         "title": "Project",
         "description": "A persisted ResearchProject design (ADR-0002 Phase D).\n\n``targets`` items are ``{\"kind\": ..., \"url\": ...}`` dicts; the research\nquery is the ``{\"entity\", \"root\", \"query_context\"}`` shape of\n``domain.query.ResearchQueryRequest.model_dump()``. ``config_hash`` is a\nstable sha256 over the mutable definition (``ProjectService.config_hash``)\nand changes only when the researcher edits the design."
       },
+      "ProjectItem": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "item_type": {
+            "type": "string",
+            "enum": [
+              "sample_group",
+              "dataset_group",
+              "mixed"
+            ],
+            "title": "Item Type",
+            "default": "mixed"
+          },
+          "sample_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sample Ids"
+          },
+          "dataset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Dataset Ids"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "item_id",
+          "project_id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ProjectItem",
+        "description": "A project item that groups related samples and datasets for a research project.\n\nA project item can contain multiple samples and datasets, allowing researchers\nto organize their work into logical units (e.g., \"Pilot Study\", \"Main Analysis\",\n\"Replication\"). Each item tracks its constituent samples and datasets with\nprovenance information."
+      },
       "ProvenanceRecord": {
         "properties": {
           "entity": {
@@ -8851,10 +10702,32 @@
             "title": "Entities Succeeded",
             "default": 0
           },
+          "entities_existing": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entities Existing"
+          },
           "entities_failed": {
             "type": "integer",
             "title": "Entities Failed",
             "default": 0
+          },
+          "comments_collected": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comments Collected"
           },
           "notes": {
             "items": {
@@ -8862,6 +10735,17 @@
             },
             "type": "array",
             "title": "Notes"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
           }
         },
         "additionalProperties": true,
@@ -9079,6 +10963,49 @@
         "title": "RunType",
         "description": "The kind of target a collection run is executed against."
       },
+      "RunVideosPayload": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/VideoPayload"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "default": 0
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "run_id"
+        ],
+        "title": "RunVideosPayload",
+        "description": "Paginated list of videos collected in a run."
+      },
       "Sample": {
         "properties": {
           "sample_id": {
@@ -9149,6 +11076,21 @@
               }
             ],
             "title": "Created By Run Id"
+          },
+          "scope": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Scope"
+          },
+          "filters_applied": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Filters Applied"
+          },
+          "labels": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Labels"
           }
         },
         "additionalProperties": true,
@@ -9161,7 +11103,7 @@
           "sample_size"
         ],
         "title": "Sample",
-        "description": "An immutable, persisted research sample (ADR-0011).\n\n``sample_id`` is stable forever; there is deliberately no update endpoint.\n``member_ids`` holds the full ordered membership (reassembled from the\nchunked sidecar when ``overflow`` is true), and ``criteria_json`` records\nthe exact criteria so the sample can be audited and reproduced."
+        "description": "An immutable, persisted research sample (ADR-0011).\n\n``sample_id`` is stable forever; there is deliberately no update endpoint.\n``member_ids`` holds the full ordered membership (reassembled from the\nchunked sidecar when ``overflow`` is true), and ``criteria_json`` records\nthe exact criteria so the sample can be audited and reproduced.\n\nThe ``labels`` field supports three namespaces:\n- ``system``: auto-populated provenance (created_at, created_by, source_corpus, collection_run_id)\n- ``research``: researcher-defined design metadata (research_question, methodology, population, sampling_frame, notes)\n- ``custom``: arbitrary key-value pairs created by the researcher\n\nThe ``scope`` field tracks the data-space boundaries of this sample\n(channel_ids, video_ids, author_ids, date_from, date_to) for reproducibility."
       },
       "SampleCompareRequest": {
         "properties": {
@@ -9421,6 +11363,7 @@
           "top_engagement",
           "bottom_engagement",
           "top_comments",
+          "top_replies",
           "top_comment_rate",
           "top_like_rate",
           "longest",
@@ -9505,6 +11448,41 @@
         ],
         "title": "SortOption",
         "description": "One sortable variable exposed to the explorer UI."
+      },
+      "SystemFoldersPayload": {
+        "properties": {
+          "workbook_path": {
+            "type": "string",
+            "title": "Workbook Path"
+          },
+          "transcripts_dir": {
+            "type": "string",
+            "title": "Transcripts Dir"
+          },
+          "datasets_dir": {
+            "type": "string",
+            "title": "Datasets Dir"
+          },
+          "samples_dir": {
+            "type": "string",
+            "title": "Samples Dir"
+          },
+          "data_dir": {
+            "type": "string",
+            "title": "Data Dir"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "workbook_path",
+          "transcripts_dir",
+          "datasets_dir",
+          "samples_dir",
+          "data_dir"
+        ],
+        "title": "SystemFoldersPayload",
+        "description": "System folder paths."
       },
       "TargetKind": {
         "type": "string",
@@ -9730,6 +11708,108 @@
         ],
         "title": "TopVideosPayload"
       },
+      "UpdateDatasetRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "UpdateDatasetRequest",
+        "description": "PATCH body for ``PATCH .../datasets/{dataset_id}`` (``extra=\"forbid\"``)."
+      },
+      "UpdateProjectItemRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "sample_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sample Ids"
+          },
+          "dataset_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Ids"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "UpdateProjectItemRequest",
+        "description": "PATCH body for ``PATCH .../projects/{project_id}/items/{item_id}``."
+      },
       "UpdateProjectRequest": {
         "properties": {
           "name": {
@@ -9796,6 +11876,25 @@
         "type": "object",
         "title": "UpdateProjectRequest",
         "description": "PATCH body for ``PATCH .../projects/{project_id}`` (``extra=\"forbid\"``).\n\nOnly explicitly provided fields are applied (pydantic ``model_fields_set``\nsemantics); sending ``research_query: null`` clears the query."
+      },
+      "UpdateRunRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "UpdateRunRequest",
+        "description": "Body for ``PATCH .../runs/{run_id}`` (``extra=\"forbid\"``).\n\nOnly explicitly provided fields are applied; the primary editable field is\nthe researcher-provided ``name`` label."
       },
       "ValidationError": {
         "properties": {

@@ -59,8 +59,11 @@ class CollectionRun(BaseModel):
     config_json: dict[str, Any] = Field(default_factory=dict)
     entities_discovered: int = 0
     entities_succeeded: int = 0
+    entities_existing: int | None = None
     entities_failed: int = 0
+    comments_collected: int | None = None
     notes: list[str] = Field(default_factory=list)
+    name: str | None = None  # researcher-provided display label (editable)
 
 
 class CollectionError(BaseModel):

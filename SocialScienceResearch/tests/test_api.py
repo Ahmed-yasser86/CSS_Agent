@@ -120,6 +120,21 @@ def test_run_not_found_404(client) -> None:
     assert resp.status_code == 404
 
 
+def test_run_rename_patch(client) -> None:
+    resp = client.patch(f"{PREFIX}/runs/run_api_1", json={"name": "Pilot 1"})
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Pilot 1"
+
+    resp = client.get(f"{PREFIX}/runs/run_api_1")
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "Pilot 1"
+
+
+def test_run_rename_unknown_run_404(client) -> None:
+    resp = client.patch(f"{PREFIX}/runs/nope", json={"name": "X"})
+    assert resp.status_code == 404
+
+
 def test_channel_overview(client) -> None:
     resp = client.get(f"{PREFIX}/channels/UCapi000000000000000000000/overview")
     assert resp.status_code == 200
@@ -185,3 +200,38 @@ def test_network_video_context(client) -> None:
     body = resp.json()
     assert body["out_degree"] == 1
     assert body["recommends"][0]["recommended_video_id"] == "api_target"
+
+
+def test_video_recommendations_ranked_by_feed_position(client) -> None:
+    """``/videos/{id}/recommendations`` returns the rail in feed order, not
+    alphabetically by target id."""
+    repos = client.app.state.services["repos"]
+    # Insert out of order and with a repeat across runs to prove ranking.
+    inserts = [
+        ("rec_api_mid", "run_api_1", "api_v1", "mid_target", 1),
+        ("rec_api_late", "run_api_1", "api_v1", "late_target", 3),
+        ("rec_api_early", "run_api_2", "api_v1", "early_target", 0),
+        ("rec_api_none", "run_api_1", "api_v1", "no_rank_target", None),
+    ]
+    for observation_id, run, source, target, position in inserts:
+        repos.recommendations.save_recommendation(
+            RecommendationObservation(
+                observation_id=observation_id,
+                collection_run_id=run,
+                source_video_id=source,
+                recommended_video_id=target,
+                position=position,
+                status=RecommendationStatus.OBSERVED,
+            )
+        )
+    resp = client.get(f"{PREFIX}/videos/api_v1/recommendations")
+    assert resp.status_code == 200
+    body = resp.json()
+    ordered = [item["recommended_video_id"] for item in body["items"]]
+    # Position 0: fixture edge (run_api_1) then early_target (run_api_2).
+    assert ordered[0] == "api_target"
+    assert ordered[1] == "early_target"
+    assert ordered[2] == "mid_target"  # position 1
+    assert ordered[3] == "late_target"  # position 3
+    assert ordered[4] == "no_rank_target"  # None sorts last
+    assert body["total"] == 5  # 4 new + the fixture edge

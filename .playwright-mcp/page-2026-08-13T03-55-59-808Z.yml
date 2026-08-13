@@ -1,0 +1,62 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - link "Social Science Research" [ref=e5] [cursor=pointer]:
+        - /url: /
+      - navigation "Primary" [ref=e10]:
+        - link "Workspace" [ref=e11] [cursor=pointer]:
+          - /url: /
+        - link "Collect" [ref=e15] [cursor=pointer]:
+          - /url: /collect
+        - link "Explorer" [ref=e20] [cursor=pointer]:
+          - /url: /explore
+        - link "Network" [ref=e26] [cursor=pointer]:
+          - /url: /network
+        - link "Samples" [ref=e33] [cursor=pointer]:
+          - /url: /samples
+        - link "Datasets" [ref=e39] [cursor=pointer]:
+          - /url: /datasets
+        - link "Projects" [ref=e43] [cursor=pointer]:
+          - /url: /projects
+        - link "Runs" [ref=e47] [cursor=pointer]:
+          - /url: /runs
+      - generic [ref=e52]:
+        - button "Switch to dark mode" [ref=e53]
+        - button "Jobs tray" [ref=e56]:
+          - generic [ref=e57]: Jobs
+        - button "Search… Ctrl K" [ref=e58]:
+          - generic [ref=e62]: Search…
+          - generic:
+            - text: Ctrl
+            - generic: K
+        - generic [ref=e63]:
+          - heading "Command Palette" [level=2] [ref=e64]
+          - paragraph [ref=e65]: Search for a command to run...
+  - main [ref=e66]:
+    - generic [ref=e68]:
+      - generic [ref=e69]:
+        - heading "Research Workspace" [level=1] [ref=e70]
+        - paragraph [ref=e71]: Collect YouTube data, inspect provenance, sample reproducibly, and analyze recommendation networks — all in one research workbench.
+      - generic [ref=e72]:
+        - generic [ref=e74]:
+          - heading "Collect data" [level=2] [ref=e75]
+          - generic [ref=e77]:
+            - generic [ref=e78]:
+              - generic [ref=e79]:
+                - text: YouTube URL
+                - textbox "YouTube URL" [ref=e80]:
+                  - /placeholder: https://www.youtube.com/@channel
+              - button "Start collection" [disabled]
+            - tablist [ref=e82]:
+              - tab "Channel" [selected] [ref=e83]
+              - tab "Video" [ref=e84]
+              - tab "Recommendations" [ref=e85]
+            - button "Show researcher options" [ref=e87]
+        - complementary [ref=e88]:
+          - generic [ref=e89]:
+            - heading "Recent runs" [level=2] [ref=e90]
+            - link "View all" [ref=e91] [cursor=pointer]:
+              - /url: /runs
+          - status [ref=e92]:
+            - paragraph [ref=e95]: Loading runs…
+  - contentinfo [ref=e96]: Computational Social Science Research Workbench · data is observed, never estimated · missing values are reported explicitly

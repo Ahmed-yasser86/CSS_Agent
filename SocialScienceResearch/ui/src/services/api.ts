@@ -1,36 +1,42 @@
 import type {
-  ChannelOverview,
-  CollectionResult,
-  CollectionRun,
-  CollectionError,
-  CollectionSpec,
   Comment,
-  CommentPercentiles,
-  CommentThread,
-  CommentVelocityBucket,
-  CoverageReport,
-  CollectJobResult,
-  DatasetSummary,
-  Job,
-  NetworkSummary,
-  OperatorInfo,
-  Paginated,
-  RecommendationEdge,
-  RunType,
+  Video,
+  VideoFilter,
   SamplingResult,
-  SamplingSpec,
-  TopVideosResult,
+  VideoEngagement,
+  CommentPercentiles,
+  CommentVelocityBucket,
+  RecommendationEdge,
+  NetworkSummary,
+  VideoNetworkContext,
+  SearchResult,
   VariableMeta,
+  OperatorInfo,
+  ResearchQuery,
   QueryPreviewResult,
   QueryResolveResult,
-  ResearchQuery,
-  SearchResult,
-  Video,
-  VideoEngagement,
-  VideoFilter,
-  VideoNetworkContext,
+  RunVideo,
+  CommentStats,
+  SystemFolders,
+  ExportRequest,
+  Paginated,
+  CollectionResult,
+  CollectionRun,
+  ChannelOverview,
+  TopVideosResult,
   VideoObservation,
+  Job,
+  CollectJobResult,
+  CoverageReport,
+  DatasetSummary,
+  CommentThread,
+  CollectionError,
+  CollectionSpec,
+  RunType,
+  SamplingSpec,
 } from "@/lib/types";
+
+export type { SamplingResult, SamplingSpec };
 
 export class ApiError extends Error {
   status: number;
@@ -44,6 +50,13 @@ export class ApiError extends Error {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "/api/v1/social-science";
 
+export interface CommentTreeNode {
+  comment: Comment;
+  replies: CommentTreeNode[];
+  total_replies: number;
+  max_depth: number;
+}
+
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: init?.body
@@ -55,11 +68,13 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     let message = `Request failed (${res.status})`;
     try {
       const body = await res.json();
-      if (body?.detail) {
-        message =
-          typeof body.detail === "string"
-            ? body.detail
-            : JSON.stringify(body.detail);
+      const detail =
+        body?.detail &&
+        (typeof body.detail === "string"
+          ? body.detail
+          : JSON.stringify(body.detail));
+      if (body?.message || detail) {
+        message = String(body?.message || detail);
       }
     } catch {
       // non-JSON error body
@@ -206,7 +221,7 @@ export function getChannelTopVideos(
 // Runs (provenance)
 // ---------------------------------------------------------------------------
 export function getRuns(runType?: RunType): Promise<CollectionRun[]> {
-  return request<Paginated<CollectionRun>>(
+  return request< Paginated<CollectionRun>>(
     `/runs${toQuery({ run_type: runType })}`,
   ).then((page) => page.items ?? []);
 }
@@ -215,8 +230,33 @@ export function getRun(runId: string): Promise<CollectionRun> {
   return request(`/runs/${runId}`);
 }
 
+export function updateRunName(
+  runId: string,
+  name: string,
+): Promise<CollectionRun> {
+  return request(`/runs/${runId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
 export function getRunErrors(runId: string): Promise<CollectionError[]> {
   return request(`/runs/${runId}/errors`);
+}
+
+// ---------------------------------------------------------------------------
+// Channels
+// ---------------------------------------------------------------------------
+export function getChannels(cursor?: string): Promise<Paginated<Channel>> {
+  return request(`/channels${toQuery({ cursor })}`);
+}
+
+export interface Channel {
+  channel_id: string;
+  title: string | null;
+  url?: string;
+  handle?: string | null;
+  description?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -363,4 +403,115 @@ export function resolveResearchQuery(
     method: "POST",
     body: JSON.stringify(query),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Run videos
+// ---------------------------------------------------------------------------
+export function getRunVideos(runId: string): Promise<RunVideo[]> {
+  return request<Paginated<RunVideo>>(`/runs/${runId}/videos`).then(
+    (page) => page.items ?? [],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Comment stats
+// ---------------------------------------------------------------------------
+export function getCommentStats(videoId: string): Promise<CommentStats> {
+  return request(`/videos/${videoId}/comments/stats`);
+}
+
+// ---------------------------------------------------------------------------
+// System folders
+// ---------------------------------------------------------------------------
+export function getSystemFolders(): Promise<SystemFolders> {
+  return request("/system/folders");
+}
+
+// ---------------------------------------------------------------------------
+// Export
+// ---------------------------------------------------------------------------
+export function exportData(request: ExportRequest): Promise<Blob> {
+  return fetch(`${API_BASE}/export`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  }).then((res) => {
+    if (!res.ok) {
+      throw new ApiError(res.status, "Export failed");
+    }
+    return res.blob();
+  });
+}
+
+export interface AdvancedSamplingSpec {
+  // Sampling strategy
+  strategy: string;
+  size?: number;
+  percent?: number;
+  seed?: number;
+  strata?: "year" | "month" | "weekday";
+  sample_per_stratum?: number;
+  date_from?: string;
+  date_to?: string;
+  top_n?: number;
+
+  // Scope filters
+  entity_type: "video" | "comment";
+  channel_ids?: string[];
+  run_ids?: string[];
+  video_ids?: string[];
+  author_ids?: string[];
+  exclude_author_ids?: string[];
+  author_names?: string[];
+  exclude_author_names?: string[];
+  include_all_channels?: boolean;
+
+  // Video-level filters
+  video_type?: string;
+  duration_min?: number;
+  duration_max?: number;
+  views_min?: number;
+  views_max?: number;
+  upload_hour?: number;
+  upload_weekday?: number;
+  keywords?: string[];
+  tags?: string[];
+  category?: string;
+  categories?: string[];
+
+  // Comment-level filters
+  min_likes?: number;
+  max_likes?: number;
+  min_replies?: number;
+  max_replies?: number;
+  only_roots?: boolean;
+  only_replies?: boolean;
+  is_author?: boolean;
+  comment_keywords?: string[];
+
+  // Author-overlap filters
+  overlap?: "off" | "video" | "channel";
+  overlap_min?: number;
+  overlap_video_ids?: string[];
+  overlap_channel_ids?: string[];
+}
+
+export function sampleAdvanced(
+  spec: AdvancedSamplingSpec,
+): Promise<SamplingResult> {
+  return request("/sampling/advanced", {
+    method: "POST",
+    body: JSON.stringify(spec),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Comment tree
+// ---------------------------------------------------------------------------
+export function getCommentTree(
+  videoId: string,
+  commentId: string,
+): Promise<CommentTreeNode> {
+  return request(`/videos/${videoId}/comments/${commentId}/tree`);
 }

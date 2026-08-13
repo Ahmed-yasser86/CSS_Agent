@@ -7,9 +7,11 @@ import { useChannelOverview, useChannelVideoCount, useSampleVideos } from "@/ser
 import { MetricTile } from "@/components/features/metric-tile";
 import { LoadingState, ErrorState, EmptyState } from "@/components/features/state";
 import { VideoCorpusBrowser } from "@/components/features/video-corpus-browser";
-import { SamplingWorkbench } from "@/components/features/sampling-workbench";
+import { SamplingWorkbench } from "@/components/features/sampling/SamplingWorkbench";
+import { FoldersTab } from "@/components/features/folders-tab";
+import { ExportTab } from "@/components/features/export-tab";
 
-type TabId = "overview" | "videos" | "sampling";
+type TabId = "overview" | "videos" | "sampling" | "folders" | "export";
 
 export function ChannelWorkspace({
   channelId,
@@ -45,6 +47,8 @@ export function ChannelWorkspace({
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="videos">Videos</TabsTrigger>
           <TabsTrigger value="sampling">Sampling</TabsTrigger>
+          <TabsTrigger value="folders">Folders</TabsTrigger>
+          <TabsTrigger value="export">Export</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-4">
@@ -83,7 +87,7 @@ export function ChannelWorkspace({
               </div>
               <p className="text-xs text-muted-foreground">
                 Latest observed statistics. Values the collector did not provide
-                are shown as “—” with their availability, never as zero.
+                are shown as &ldquo;&mdash;&rdquo; with their availability, never as zero.
               </p>
             </div>
           ) : (
@@ -104,6 +108,14 @@ export function ChannelWorkspace({
             populationSize={countQuery.data?.count ?? 0}
             mutate={sampleMutation}
           />
+        </TabsContent>
+
+        <TabsContent value="folders" className="mt-4">
+          <FoldersTab />
+        </TabsContent>
+
+        <TabsContent value="export" className="mt-4">
+          <ExportTab />
         </TabsContent>
       </Tabs>
     </div>

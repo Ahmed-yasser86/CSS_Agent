@@ -237,7 +237,12 @@ class NetworkAnalyticsService:
 
     # ------------------------------------------------------------------
     def edges(self, run_id: str | None = None) -> list[dict[str, Any]]:
-        """Serialize all observed edges for a slice (export/listing)."""
+        """Serialize all observed edges for a slice (export/listing).
+
+        Rows are ordered by feed rank: grouped by source video, then by the
+        ``position`` the recommendation occupied in that source's rail (so the
+        edge listing and exports reflect the observed feed order).
+        """
         rows: list[dict[str, Any]] = []
         for edge in self._repos.recommendations.list_recommendation_edges(
             run_id=run_id
@@ -252,7 +257,16 @@ class NetworkAnalyticsService:
                     "channel_id": edge.channel_id,
                 }
             )
-        return rows
+        return sorted(
+            rows,
+            key=lambda row: (
+                row["source_video_id"],
+                row["position"] is None,
+                row["position"] if row["position"] is not None else 0,
+                row["run_id"] or "",
+                row["recommended_video_id"],
+            ),
+        )
 
     # ------------------------------------------------------------------
     def export_edges(

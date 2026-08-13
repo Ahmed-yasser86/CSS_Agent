@@ -26,6 +26,8 @@ from SocialScienceResearch.domain.models import (
     Video,
     VideoObservation,
 )
+from SocialScienceResearch.domain.dataset_models import Dataset, ProjectItem
+from SocialScienceResearch.domain.sample_models import Sample
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,9 @@ class Repositories:
     recommendations: RecommendationRepository
     transcripts: TranscriptRepository
     authors: AuthorRepository
+    datasets: DatasetRepository
+    samples: SampleRepository
+    project_items: ProjectItemRepository
 
 
 class ChannelRepository(ABC):
@@ -113,6 +118,10 @@ class VideoRepository(ABC):
         """Return all videos, optionally filtered by channel."""
 
     @abstractmethod
+    def list_videos_by_run(self, run_id: str) -> list[Video]:
+        """Return videos first discovered in the given collection run."""
+
+    @abstractmethod
     def save_video_observation(self, observation: VideoObservation) -> None:
         """Persist one run-scoped observation (idempotent by observation id)."""
 
@@ -158,6 +167,13 @@ class CommentRepository(ABC):
     @abstractmethod
     def list_replies(self, parent_comment_id: str) -> list[Comment]:
         """Return the direct replies of a comment."""
+
+    @abstractmethod
+    def list_replies_by_ids(self, parent_comment_ids: list[str]) -> dict[str, list[Comment]]:
+        """Return direct replies for multiple parent comments in one scan.
+
+        Returns a dict keyed by parent_comment_id with lists of reply comments.
+        """
 
     @abstractmethod
     def save_comment_observation(self, observation: CommentObservation) -> None:
@@ -288,3 +304,31 @@ class AuthorRepository(ABC):
     @abstractmethod
     def get_author(self, author_id: str) -> AuthorProfile | None:
         """Return the aggregated profile of one author, if any comments exist."""
+
+
+class ProjectItemRepository(ABC):
+    """Persistence contract for ProjectItems (sub-items within a research project)."""
+
+    @abstractmethod
+    def save_item(self, item: ProjectItem) -> None:
+        """Persist a project item (upsert by item_id)."""
+
+    @abstractmethod
+    def get_item(self, item_id: str) -> ProjectItem | None:
+        """Return the project item with the given id, if present."""
+
+    @abstractmethod
+    def list_items(self, project_id: str | None = None) -> list[ProjectItem]:
+        """Return all project items, optionally filtered by project_id."""
+
+    @abstractmethod
+    def list_items_by_project(self, project_id: str) -> list[ProjectItem]:
+        """Return all items belonging to a specific project."""
+
+    @abstractmethod
+    def update_item(self, item: ProjectItem) -> None:
+        """Update an existing project item."""
+
+    @abstractmethod
+    def delete_item(self, item_id: str) -> None:
+        """Delete a project item."""

@@ -80,9 +80,26 @@ export function SampleCard({
         </dl>
 
         {sample.criteria_json && Object.keys(sample.criteria_json).length > 0 ? (
-          <pre className="max-h-28 overflow-auto rounded-md border bg-muted/20 p-2 text-xs">
-            {JSON.stringify(sample.criteria_json, null, 2)}
-          </pre>
+          <div className="rounded-md border bg-muted/20 p-2">
+            <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Criteria
+            </p>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
+              {Object.entries(sample.criteria_json).map(([key, value]) => (
+                <div
+                  key={key}
+                  className="flex min-w-0 items-baseline justify-between gap-2"
+                >
+                  <dt className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                    {key}
+                  </dt>
+                  <dd className="truncate font-mono text-xs" title={formatCriteriaValue(value)}>
+                    {formatCriteriaValue(value)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         ) : null}
 
         <div className="mt-auto flex items-center justify-between gap-2 border-t pt-2">
@@ -143,6 +160,13 @@ export function SampleCard({
       </Dialog>
     </>
   );
+}
+
+function formatCriteriaValue(value: unknown): string {
+  if (value === null || value === undefined) return "—";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

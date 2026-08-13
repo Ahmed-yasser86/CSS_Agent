@@ -61,6 +61,17 @@ class TranscriptUnsupportedError(AcquisitionError):
     error_type = ErrorType.TRANSCRIPT_UNSUPPORTED
 
 
+class LiveEventSkipError(AcquisitionError):
+    """Raised when a live/upcoming stream cannot be deep-extracted yet.
+
+    Signals a *skip*, not a failure: an upcoming stream has no comments until
+    it airs, so upstream code observes this as a skip (no error stats are
+    polluted) while still persisting whatever metadata the flat entry carries.
+    """
+
+    error_type = ErrorType.UNAVAILABLE
+
+
 class ValidationError(AcquisitionError):
     error_type = ErrorType.VALIDATION
 

@@ -20,7 +20,7 @@ UI never silently loses a column).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -94,6 +94,12 @@ class CreateDatasetRequest(BaseModel):
     entity_type: str | None = None
     project_id: str | None = None
     include_raw: bool = False
+    run_ids: list[str] = Field(default_factory=list)
+    channel_ids: list[str] = Field(default_factory=list)
+    video_ids: list[str] = Field(default_factory=list)
+    member_ids: list[str] = Field(default_factory=list)
+    criteria: dict[str, Any] | None = None
+    variable_selection: list[str] = Field(default_factory=list)
 
     @field_validator("entity_type")
     @classmethod
@@ -166,6 +172,54 @@ class ColumnCoverage(BaseModel):
     present: int
     missing: int
     missing_share: float
+
+
+class ProjectItem(BaseModel):
+    """A project item that groups related samples and datasets for a research project.
+
+    A project item can contain multiple samples and datasets, allowing researchers
+    to organize their work into logical units (e.g., "Pilot Study", "Main Analysis",
+    "Replication"). Each item tracks its constituent samples and datasets with
+    provenance information.
+    """
+
+    model_config = _RESPONSE_CONFIG
+
+    item_id: str
+    project_id: str
+    name: str
+    description: str | None = None
+    item_type: Literal["sample_group", "dataset_group", "mixed"] = "mixed"
+    sample_ids: list[str] = Field(default_factory=list)
+    dataset_ids: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class CreateProjectItemRequest(BaseModel):
+    """Body for ``POST .../projects/{project_id}/items`` (``extra="forbid"``)."""
+
+    model_config = _REQUEST_CONFIG
+
+    name: str
+    description: str | None = None
+    item_type: Literal["sample_group", "dataset_group", "mixed"] = "mixed"
+    sample_ids: list[str] = Field(default_factory=list)
+    dataset_ids: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+
+class UpdateProjectItemRequest(BaseModel):
+    """PATCH body for ``PATCH .../projects/{project_id}/items/{item_id}``."""
+
+    model_config = _REQUEST_CONFIG
+
+    name: str | None = None
+    description: str | None = None
+    sample_ids: list[str] | None = None
+    dataset_ids: list[str] | None = None
+    tags: list[str] | None = None
 
 
 class DatasetQualityReport(BaseModel):

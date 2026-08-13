@@ -74,8 +74,9 @@ export function RecommendationsExplorer({ videoId }: { videoId: string }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          Observed recommendation edges from this source video, attributed to the
-          run that recorded them.
+          Observed recommendation edges from this source video, ranked by their
+          position in the “Up Next” feed (#1 first) and attributed to the run
+          that recorded them.
         </p>
         <Button
           render={<Link href={`/network/videos/${videoId}`} />}
@@ -104,7 +105,7 @@ export function RecommendationsExplorer({ videoId }: { videoId: string }) {
         <EmptyState
           icon={CircleOff}
           title="No observed recommendations"
-          description="No recommendation edges have been recorded for this video. Recommendation observation depends on the acquisition library — yt-dlp cannot reliably provide recommendations, so this is reported as an unsupported limitation rather than a zero result. You can still analyze the network from any edges recorded for other videos."
+          description="No recommendation edges have been recorded for this video. Recommendation observation uses a layered provider strategy (library fields, the INNERTUBE /next endpoint, and watch-page dumps) and records an explicit unsupported error only when every provider returns nothing. You can still analyze the network from any edges recorded for other videos."
         />
       )}
     </div>

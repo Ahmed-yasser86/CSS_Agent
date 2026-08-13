@@ -8,6 +8,11 @@ import {
   CircleAlert,
   Ban,
   CheckCircle2,
+  Video,
+  Film,
+  Tv,
+  Mic2,
+  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +22,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import type { CollectionSpec, CollectionTargetKind, QueryGroup } from "@/lib/types";
-import { QueryBuilder } from "@/components/features/query-builder";
+import { CriteriaFilterBar } from "@/components/features/criteria-filter-bar";
 import {
   useSubmitCollect,
   useJob,
@@ -41,6 +46,14 @@ const KIND_TABS: { value: CollectionTargetKind; label: string }[] = [
   { value: "recommendation", label: "Recommendations" },
 ];
 
+const VIDEO_TABS: { value: string; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { value: "videos", label: "Videos", icon: Video },
+  { value: "shorts", label: "Shorts", icon: Film },
+  { value: "streams", label: "Streams", icon: Tv },
+  { value: "podcasts", label: "Podcasts", icon: Mic2 },
+  { value: "stacks", label: "Stacks", icon: Layers },
+];
+
 export function CollectTargetForm({
   initialKind = "channel",
 }: {
@@ -55,8 +68,12 @@ export function CollectTargetForm({
   const [commentDateFrom, setCommentDateFrom] = useState("");
   const [commentDateTo, setCommentDateTo] = useState("");
   const [maxComments, setMaxComments] = useState("");
+  const [scrapeAllComments, setScrapeAllComments] = useState(false);
   const [maxVideosToEnrich, setMaxVideosToEnrich] = useState("");
   const [maxVideosPerChannel, setMaxVideosPerChannel] = useState("");
+  const [includeLiveVideos, setIncludeLiveVideos] = useState(false);
+  const [scrapeLiveOnly, setScrapeLiveOnly] = useState(false);
+  const [videoTabs, setVideoTabs] = useState<string[]>([]);
   const [videoCriteria, setVideoCriteria] = useState<QueryGroup | null>(null);
   const [commentCriteria, setCommentCriteria] = useState<QueryGroup | null>(null);
 
@@ -91,11 +108,21 @@ export function CollectTargetForm({
     if (commentDateTo) target.comment_date_to = new Date(commentDateTo).toISOString();
     const cap = parseInt(maxComments, 10);
     if (!Number.isNaN(cap) && cap > 0) target.max_comments_per_video = cap;
+    if (scrapeAllComments) target.scrape_all_comments = true;
     const enrich = parseInt(maxVideosToEnrich, 10);
     if (!Number.isNaN(enrich) && enrich > 0) target.max_videos_to_enrich = enrich;
     const perChannel = parseInt(maxVideosPerChannel, 10);
     if (!Number.isNaN(perChannel) && perChannel > 0) {
       target.max_videos_per_channel = perChannel;
+    }
+    if (includeLiveVideos) {
+      target.include_live_videos = true;
+    }
+    if (scrapeLiveOnly) {
+      target.scrape_live_only = true;
+    }
+    if (videoTabs.length > 0) {
+      target.video_tabs = videoTabs;
     }
     if (videoCriteria && videoCriteria.conditions.length > 0) {
       target.video_criteria = videoCriteria;
@@ -171,6 +198,13 @@ export function CollectTargetForm({
           </TabsList>
         </Tabs>
 
+        {kind === "recommendation" ? (
+          <p className="text-xs text-muted-foreground">
+            Observes the video’s “Up Next” rail through a layered provider
+            strategy and ranks each edge by its feed position.
+          </p>
+        ) : null}
+
         <div className="flex items-center gap-2 pt-1">
           <Button
             type="button"
@@ -233,8 +267,20 @@ export function CollectTargetForm({
                 value={maxComments}
                 onChange={(e) => setMaxComments(e.target.value)}
                 placeholder="unlimited"
+                disabled={scrapeAllComments}
               />
             </Field>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="scrape-all-comments"
+                checked={scrapeAllComments}
+                onCheckedChange={(v) => {
+                  setScrapeAllComments(v === true);
+                  if (v === true) setMaxComments("");
+                }}
+              />
+              <Label htmlFor="scrape-all-comments">Scrape all comments (no cap)</Label>
+            </div>
             <Field label="Max videos to deep-enrich">
               <Input
                 type="number"
@@ -253,16 +299,62 @@ export function CollectTargetForm({
                 placeholder="all"
               />
             </Field>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="include-live-videos"
+                checked={includeLiveVideos}
+                onCheckedChange={(v) => setIncludeLiveVideos(v === true)}
+              />
+              <Label htmlFor="include-live-videos">Include live videos / streams</Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="scrape-live-only"
+                checked={scrapeLiveOnly}
+                onCheckedChange={(v) => setScrapeLiveOnly(v === true)}
+              />
+              <Label htmlFor="scrape-live-only">Scrape live videos only</Label>
+            </div>
           </div>
+
+          {kind === "channel" && (
+            <section className="space-y-2 rounded-md border p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Video tabs to collect
+              </p>
+              <div className="flex flex-wrap gap-3 mt-2">
+                {VIDEO_TABS.map((tab) => (
+                  <div key={tab.value} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`video-tab-${tab.value}`}
+                      checked={videoTabs.includes(tab.value)}
+                      onCheckedChange={(checked) =>
+                        setVideoTabs((prev) =>
+                          checked
+                            ? [...prev, tab.value]
+                            : prev.filter((t) => t !== tab.value)
+                        )
+                      }
+                    />
+                    <Label htmlFor={`video-tab-${tab.value}`} className="flex items-center gap-1 cursor-pointer">
+                      <tab.icon className="size-3.5" aria-hidden />
+                      {tab.label}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {kind === "channel" ? (
             <section className="space-y-2 rounded-md border p-3">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Video inclusion criteria (applied before collection)
               </p>
-              <QueryBuilder
-                initialEntity="video"
-                onChange={(_entity, root) => setVideoCriteria(root)}
+              <CriteriaFilterBar
+                entity="video"
+                onChange={(group) => setVideoCriteria(group)}
+                initialGroup={videoCriteria}
               />
             </section>
           ) : null}
@@ -272,9 +364,10 @@ export function CollectTargetForm({
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Comment inclusion criteria (applied before collection)
               </p>
-              <QueryBuilder
-                initialEntity="comment"
-                onChange={(_entity, root) => setCommentCriteria(root)}
+              <CriteriaFilterBar
+                entity="comment"
+                onChange={(group) => setCommentCriteria(group)}
+                initialGroup={commentCriteria}
               />
             </section>
           ) : null}

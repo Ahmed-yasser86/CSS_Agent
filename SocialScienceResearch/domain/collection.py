@@ -59,6 +59,7 @@ class CollectionSpec(BaseModel):
 
     targets: list[CollectionTarget] = Field(min_length=_MIN_TARGETS)
     collect_comments: bool | None = None
+    scrape_all_comments: bool | None = None
     max_comments_per_video: int | None = None
     comment_min_likes: int | None = None
     comment_date_from: datetime | None = None
@@ -70,6 +71,9 @@ class CollectionSpec(BaseModel):
     sampling_seed: int | None = None
     video_criteria: QueryGroup | None = None
     comment_criteria: QueryGroup | None = None
+    include_live_videos: bool | None = None
+    video_tabs: list[str] | None = None
+    scrape_live_only: bool | None = None
 
     @field_validator(
         "max_comments_per_video", "max_videos_to_enrich", "max_videos_per_channel"
@@ -118,6 +122,9 @@ class CollectionSpec(BaseModel):
         display and for persisting as the run's ``config_json``.
         """
         collection = settings.collection
+        max_comments = self.max_comments_per_video
+        if self.scrape_all_comments is True:
+            max_comments = None
         return {
             "targets": [
                 {"kind": t.kind.value, "url": t.url} for t in self.targets
@@ -127,8 +134,9 @@ class CollectionSpec(BaseModel):
                 if self.collect_comments is not None
                 else collection.collect_comments
             ),
+            "scrape_all_comments": self.scrape_all_comments,
             "max_comments_per_video": (
-                self.max_comments_per_video or collection.max_comments_per_video
+                max_comments or collection.max_comments_per_video
             ),
             "comment_min_likes": self.comment_min_likes,
             "comment_date_from": (
@@ -152,6 +160,21 @@ class CollectionSpec(BaseModel):
                 self.max_videos_per_channel or collection.max_videos_per_channel
             ),
             "sampling_seed": self.sampling_seed or settings.sampling.default_seed,
+            "include_live_videos": (
+                self.include_live_videos
+                if self.include_live_videos is not None
+                else collection.include_live_videos
+            ),
+            "scrape_live_only": (
+                self.scrape_live_only
+                if self.scrape_live_only is not None
+                else getattr(collection, "scrape_live_only", False)
+            ),
+            "video_tabs": (
+                self.video_tabs
+                if self.video_tabs is not None
+                else getattr(collection, "video_tabs", None)
+            ),
             "video_criteria": (
                 self.video_criteria.model_dump(mode="json")
                 if self.video_criteria is not None

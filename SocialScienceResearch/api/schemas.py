@@ -23,8 +23,13 @@ __all__ = [
     "CollectionResultPayload",
     "CollectionResultsPayload",
     "CommentPayload",
+    "CommentStatsPayload",
+    "CommentTreePayload",
     "DatasetSummaryPayload",
     "ErrorPayload",
+    "ExportRequest",
+    "ExportResponse",
+    "FolderPathsPayload",
     "JobCancelPayload",
     "JobFailurePayload",
     "JobPayload",
@@ -35,15 +40,17 @@ __all__ = [
     "Paginated",
     "PercentilesPayload",
     "QueryPreviewResponse",
-    "QueryPreviewStage",
     "QueryResolveResponse",
     "RawVideoPayload",
     "RecommendationPayload",
     "RunPayload",
+    "RunVideosPayload",
     "SamplingResultPayload",
+    "SystemFoldersPayload",
     "ThreadPayload",
-    "TopVideoRow",
     "TopVideosPayload",
+    "TopVideoRow",
+    "UpdateRunRequest",
     "VariableMetaPayload",
     "VelocityPoint",
     "VideoEngagementPayload",
@@ -159,8 +166,23 @@ class RunPayload(_Base):
     config_json: dict[str, Any] = Field(default_factory=dict)
     entities_discovered: int = 0
     entities_succeeded: int = 0
+    entities_existing: int | None = None
     entities_failed: int = 0
+    comments_collected: int | None = None
     notes: list[str] = Field(default_factory=list)
+    name: str | None = None
+
+
+class UpdateRunRequest(_Base):
+    """Body for ``PATCH .../runs/{run_id}`` (``extra="forbid"``).
+
+    Only explicitly provided fields are applied; the primary editable field is
+    the researcher-provided ``name`` label.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
 
 
 class ChannelPayload(_Base):
@@ -227,6 +249,10 @@ class CommentPayload(_Base):
     root_comment_id: str | None = None
     is_author: bool | None = None
     first_observed_run_id: str
+    # Latest observation stats
+    like_count: int | None = None
+    reply_count: int | None = None
+    is_removed: bool | None = None
     raw_json: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -246,6 +272,17 @@ class RecommendationPayload(_Base):
 class ThreadPayload(_Base):
     comment: CommentPayload
     replies: list[CommentPayload] = Field(default_factory=list)
+
+
+class CommentTreePayload(_Base):
+    """Full comment tree with nested replies for a root comment."""
+    comment: CommentPayload
+    replies: list["CommentTreePayload"] = Field(default_factory=list)
+    total_replies: int = 0
+    max_depth: int = 0
+
+
+CommentTreePayload.model_rebuild()
 
 
 class ChannelOverviewPayload(_Base):
@@ -396,3 +433,49 @@ class QueryResolveResponse(_Base):
 
     total: int
     population_size: int
+
+
+class RunVideosPayload(_Base):
+    """Paginated list of videos collected in a run."""
+
+    run_id: str
+    items: list[VideoPayload] = Field(default_factory=list)
+    next_cursor: str | None = None
+    has_more: bool = False
+    total: int = 0
+
+
+class CommentStatsPayload(_Base):
+    """Comment statistics for a video."""
+
+    video_id: str
+    max_replies: int = 0
+    max_unique_repliers: int = 0
+    total_replies: int = 0
+    total_unique_repliers: int = 0
+
+
+class SystemFoldersPayload(_Base):
+    """System folder paths."""
+
+    workbook_path: str
+    transcripts_dir: str
+    datasets_dir: str
+    samples_dir: str
+    data_dir: str
+
+
+class ExportRequest(_Base):
+    """Request to export selected data to Excel."""
+
+    entity_type: str  # "video" | "comment" | "channel" | "run" | "sample" | "dataset"
+    ids: list[str] = Field(default_factory=list)
+    columns: list[str] = Field(default_factory=list)
+    filename: str | None = None
+
+
+class ExportResponse(_Base):
+    """Response for export endpoint (file download handled separately)."""
+
+    filename: str
+    row_count: int

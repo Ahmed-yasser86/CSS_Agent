@@ -29,7 +29,7 @@ class ProjectRepository:
         self._store = store
         store.ensure_sheet(_PROJECT_SHEET, headers_for(Project))
 
-    def save_project(self, project: Project) -> None:
+    def upsert_project(self, project: Project) -> None:
         """Persist (upsert) a project, idempotent by ``project_id``."""
         self._store.upsert_row(
             _PROJECT_SHEET, "project_id", headers_for(Project), model_to_row(project)
@@ -39,16 +39,20 @@ class ProjectRepository:
         row = self._store.find_row(_PROJECT_SHEET, "project_id", project_id)
         if row is None or row.get("project_id") != project_id:
             return None
-        return row_to_model(Project, row)  # type: ignore[return-value]
+        return row_to_model(Project, row)
 
     def list_projects(self) -> list[Project]:
         return [
-            row_to_model(Project, r)  # type: ignore[return-value]
+            row_to_model(Project, r)
             for r in self._store.read_rows(_PROJECT_SHEET, key_field="project_id")
         ]
 
+    def save_project(self, project: Project) -> None:
+        """Alias for upsert_project for backwards compatibility."""
+        self.upsert_project(project)
+
     def update_project(self, project: Project) -> None:
-        self.save_project(project)
+        self.upsert_project(project)
 
     def delete_project(self, project_id: str) -> None:
         blank_row(self._store, _PROJECT_SHEET, "project_id", project_id)

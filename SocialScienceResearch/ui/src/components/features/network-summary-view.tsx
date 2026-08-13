@@ -49,7 +49,7 @@ export function NetworkSummaryView() {
     return (
       <EmptyState
         title="Empty recommendation network"
-        description="The graph is rebuilt on demand from observed recommendation edges. No edges have been recorded yet — recommendation observation depends on the acquisition library, which may report this as unsupported."
+        description="The graph is rebuilt on demand from observed recommendation edges. No edges have been recorded yet — run a recommendation collection for a video to observe its “Up Next” rail, ranked by feed position."
       />
     );
   }

@@ -20,11 +20,13 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import date
+from pathlib import Path
 from typing import Annotated, Any
+from io import BytesIO
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel
 
 from SocialScienceResearch.config.settings import SocialScienceSettings
@@ -34,6 +36,7 @@ from SocialScienceResearch.domain.query import (
     OPERATOR_DESCRIPTIONS,
     ResearchQueryRequest,
     SamplingSpec,
+    AdvancedSamplingSpec,
     VideoFilter,
     evaluate_query,
     preview_query,
@@ -65,8 +68,11 @@ from .schemas import (
     CollectionResultPayload,
     CollectionResultsPayload,
     CommentPayload,
+    CommentStatsPayload,
     DatasetSummaryPayload,
     ErrorPayload,
+    ExportRequest,
+    ExportResponse,
     JobCancelPayload,
     JobFailurePayload,
     JobPayload,
@@ -80,9 +86,13 @@ from .schemas import (
     RawVideoPayload,
     RecommendationPayload,
     RunPayload,
+    RunVideosPayload,
     SamplingResultPayload,
+    SystemFoldersPayload,
     ThreadPayload,
     TopVideosPayload,
+    TopVideoRow,
+    UpdateRunRequest,
     VariableMetaPayload,
     VelocityPoint,
     VideoEngagementPayload,
@@ -149,8 +159,20 @@ def _comment_key(comment) -> tuple[str, ...]:
     return (comment.comment_id,)
 
 
-def _edge_key(edge) -> tuple[str, ...]:
-    return (edge.recommended_video_id, edge.observation_id)
+def _recommendation_edge_key(edge) -> tuple[str, ...]:
+    """Sort key for recommendation edges: feed rank (position) then identity.
+
+    Positions are zero-padded so string comparison mirrors numeric ordering,
+    and ``None`` positions sort last (unknown rank). All keys are strings so
+    cursor tokens remain comparable inside ``page_sorted``.
+    """
+    position = edge.position
+    position_key = f"{position:08d}" if position is not None else "~"
+    return (
+        position_key,
+        edge.collection_run_id or "",
+        edge.observation_id,
+    )
 
 
 def _paginate(
@@ -246,20 +268,24 @@ def create_app(
     # ``/runs/delta`` are never shadowed by ``/runs/{run_id}``.
     # ------------------------------------------------------------------
     from .routers import (
+        channels,
         comments,
         comparison,
         datasets,
         explorer,
         network_ext,
+        project_items,
         samples,
         search,
     )
 
+    app.include_router(channels.router, prefix=prefix)
     app.include_router(comments.router, prefix=prefix)
     app.include_router(comparison.router, prefix=prefix)
     app.include_router(datasets.router, prefix=prefix)
     app.include_router(explorer.router, prefix=prefix)
     app.include_router(network_ext.router, prefix=prefix)
+    app.include_router(project_items.router, prefix=prefix)
     app.include_router(samples.router, prefix=prefix)
     app.include_router(search.router, prefix=prefix)
 
@@ -379,6 +405,16 @@ def create_app(
             raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
         return _run_payload(run)
 
+    @app.patch(f"{prefix}/runs/{{run_id}}", tags=["runs"], response_model=RunPayload)
+    def update_run(run_id: str, body: UpdateRunRequest):
+        run = repos.runs.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        if body.name is not None:
+            run = run.model_copy(update={"name": body.name})
+        repos.runs.update_run(run)
+        return _run_payload(run)
+
     @app.get(
         f"{prefix}/runs/{{run_id}}/errors",
         tags=["runs"],
@@ -386,6 +422,30 @@ def create_app(
     )
     def run_errors(run_id: str):
         return [e.model_dump() for e in repos.runs.list_errors(run_id)]
+
+    @app.get(
+        f"{prefix}/runs/{{run_id}}/videos",
+        tags=["runs"],
+        response_model=RunVideosPayload,
+    )
+    def run_videos(
+        run_id: str,
+        cursor: str | None = Query(None, description="Opaque cursor from the previous page"),
+        page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=500),
+    ):
+        """List videos collected (first discovered) in a run."""
+        run = repos.runs.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        videos = repos.videos.list_videos_by_run(run_id)
+        paginated = _paginate(videos, cursor=cursor, page_size=page_size, key=_video_key)
+        return RunVideosPayload(
+            run_id=run_id,
+            items=paginated.items,
+            next_cursor=paginated.next_cursor,
+            has_more=paginated.has_more,
+            total=paginated.total,
+        )
 
     # ------------------------------------------------------------------
     # Corpus / channel
@@ -593,6 +653,24 @@ def create_app(
     def sample_comments(video_id: str, spec: SamplingSpec):
         return _sampling_payload(services["sampling"].sample_comments(video_id, spec))
 
+    @app.post(
+        f"{prefix}/sampling/advanced",
+        tags=["sampling"],
+        response_model=SamplingResultPayload,
+    )
+    def sample_advanced(spec: AdvancedSamplingSpec):
+        """Advanced sampling with complex filter combinations across channels, videos, and users.
+
+        Supports researcher scenarios:
+        - Sample/population of specific user comments across all videos and channels
+        - Sample/population within specific channel(s)
+        - Sample/population of specific users with their IDs
+        - Sample/population of non-specified users across one channel but among specified videos
+        - Video filters within same channel (date range, type, duration, views, etc.)
+        - Multiple channels among specific period
+        """
+        return _sampling_payload(services["sampling"].sample_advanced(spec))
+
     # ------------------------------------------------------------------
     # Video analytics
     # ------------------------------------------------------------------
@@ -647,8 +725,23 @@ def create_app(
         page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=500),
     ):
         comments = repos.comments.list_comments(video_id)
-        return _paginate(
-            comments, cursor=cursor, page_size=page_size, key=_comment_key
+        page = _paginate(comments, cursor=cursor, page_size=page_size, key=_comment_key)
+        # Enrich with latest observations (like_count, reply_count, is_removed)
+        comment_ids = [c["comment_id"] for c in page.items]
+        latest_obs = repos.comments.get_latest_comment_observations(comment_ids)
+        enriched_items = []
+        for c in page.items:
+            obs = latest_obs.get(c["comment_id"])
+            if obs:
+                c["like_count"] = obs.like_count
+                c["reply_count"] = obs.reply_count
+                c["is_removed"] = obs.is_removed
+            enriched_items.append(c)
+        return Paginated(
+            items=enriched_items,
+            next_cursor=page.next_cursor,
+            has_more=page.has_more,
+            total=page.total,
         )
 
     @app.get(
@@ -674,17 +767,248 @@ def create_app(
             key_func=lambda pair: (pair[0].comment_id,),
             total=len(full),
         )
+
+        # Collect all comment IDs on this page to fetch latest observations in one pass
+        all_comment_ids = []
+        for root, replies in page.items:
+            all_comment_ids.append(root.comment_id)
+            all_comment_ids.extend(r.comment_id for r in replies)
+        latest_obs = repos.comments.get_latest_comment_observations(all_comment_ids)
+
+        def enrich(comment):
+            obs = latest_obs.get(comment.comment_id)
+            payload = comment.model_dump()
+            if obs:
+                payload["like_count"] = obs.like_count
+                payload["reply_count"] = obs.reply_count
+                payload["is_removed"] = obs.is_removed
+            return payload
+
         return Paginated(
             items=[
                 {
-                    "comment": root.model_dump(),
-                    "replies": [r.model_dump() for r in replies],
+                    "comment": enrich(root),
+                    "replies": [enrich(r) for r in replies],
                 }
                 for root, replies in page.items
             ],
             next_cursor=page.next_cursor,
             has_more=page.has_more,
             total=page.total,
+        )
+
+    # ------------------------------------------------------------------
+    # Comment statistics
+    # ------------------------------------------------------------------
+    @app.get(
+        f"{prefix}/videos/{{video_id}}/comments/stats",
+        tags=["analytics"],
+        response_model=CommentStatsPayload,
+    )
+    def video_comment_stats(video_id: str):
+        """Comment statistics for a video:
+        - max_replies: maximum reply_count from comment observations
+        - max_unique_repliers: for the comment with max replies, count distinct author_ids of its replies
+        - total_replies: sum of all reply_counts
+        - total_unique_repliers: count of distinct author_ids across all replies
+        """
+        # Get all comments for the video
+        comments = repos.comments.list_comments(video_id)
+        if not comments:
+            return CommentStatsPayload(
+                video_id=video_id,
+                max_replies=0,
+                max_unique_repliers=0,
+                total_replies=0,
+                total_unique_repliers=0,
+            )
+
+        # Get latest observations for all comments
+        comment_ids = [c.comment_id for c in comments]
+        latest_obs = repos.comments.get_latest_comment_observations(comment_ids)
+
+        # Calculate total replies and find comment with max replies
+        total_replies = 0
+        max_replies = 0
+        max_replies_comment_id = None
+        for comment in comments:
+            obs = latest_obs.get(comment.comment_id)
+            reply_count = obs.reply_count if obs and obs.reply_count is not None else 0
+            total_replies += reply_count
+            if reply_count > max_replies:
+                max_replies = reply_count
+                max_replies_comment_id = comment.comment_id
+
+        # Calculate total unique repliers across all replies
+        # Get all replies for all comments in one pass
+        all_replies = repos.comments.list_replies_by_ids(comment_ids)
+        all_replier_ids: set[str] = set()
+        for reply_list in all_replies.values():
+            for reply in reply_list:
+                if reply.author_id:
+                    all_replier_ids.add(reply.author_id)
+                elif reply.author_name:
+                    all_replier_ids.add(reply.author_name)
+        total_unique_repliers = len(all_replier_ids)
+
+        # Calculate max_unique_repliers for the comment with max replies
+        max_unique_repliers = 0
+        if max_replies_comment_id:
+            max_comment_replies = all_replies.get(max_replies_comment_id, [])
+            max_replier_ids: set[str] = set()
+            for reply in max_comment_replies:
+                if reply.author_id:
+                    max_replier_ids.add(reply.author_id)
+                elif reply.author_name:
+                    max_replier_ids.add(reply.author_name)
+            max_unique_repliers = len(max_replier_ids)
+
+        return CommentStatsPayload(
+            video_id=video_id,
+            max_replies=max_replies,
+            max_unique_repliers=max_unique_repliers,
+            total_replies=total_replies,
+            total_unique_repliers=total_unique_repliers,
+        )
+
+    # ------------------------------------------------------------------
+    # System folders
+    # ------------------------------------------------------------------
+    @app.get(
+        f"{prefix}/system/folders",
+        tags=["system"],
+        response_model=SystemFoldersPayload,
+    )
+    def system_folders():
+        """Return data folder paths from RepositorySettings."""
+        repo_settings = settings.repository
+        return SystemFoldersPayload(
+            workbook_path=str(repo_settings.workbook_path),
+            transcripts_dir=str(repo_settings.transcripts_dir),
+            datasets_dir=str(Path(repo_settings.data_dir) / "datasets"),
+            samples_dir=str(Path(repo_settings.data_dir) / "samples"),
+            data_dir=repo_settings.data_dir,
+        )
+
+    # ------------------------------------------------------------------
+    # Export
+    # ------------------------------------------------------------------
+    @app.post(
+        f"{prefix}/export",
+        tags=["export"],
+        response_model=ExportResponse,
+    )
+    def export_data(body: ExportRequest):
+        """Export selected data to Excel file.
+
+        Accepts entity_type (video|comment|channel|run|sample|dataset), optional ids[],
+        optional columns[], and optional filename. Returns an Excel file download.
+        """
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from io import BytesIO
+
+        # Validate entity_type
+        valid_types = {"video", "comment", "channel", "run", "sample", "dataset"}
+        if body.entity_type not in valid_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid entity_type. Must be one of: {', '.join(sorted(valid_types))}",
+            )
+
+        # Get data based on entity_type
+        data: list[dict[str, Any]] = []
+        if body.entity_type == "video":
+            if body.ids:
+                for vid in body.ids:
+                    v = repos.videos.get_video(vid)
+                    if v:
+                        data.append(v.model_dump())
+            else:
+                data = [v.model_dump() for v in repos.videos.list_videos()]
+        elif body.entity_type == "comment":
+            if body.ids:
+                for cid in body.ids:
+                    c = repos.comments.get_comment(cid)
+                    if c:
+                        data.append(c.model_dump())
+            else:
+                data = [c.model_dump() for c in repos.comments.list_comments()]
+        elif body.entity_type == "channel":
+            if body.ids:
+                for chid in body.ids:
+                    ch = repos.channels.get_channel(chid)
+                    if ch:
+                        data.append(ch.model_dump())
+            else:
+                data = [ch.model_dump() for ch in repos.channels.list_channels()]
+        elif body.entity_type == "run":
+            if body.ids:
+                for rid in body.ids:
+                    r = repos.runs.get_run(rid)
+                    if r:
+                        data.append(r.model_dump())
+            else:
+                data = [r.model_dump() for r in repos.runs.list_runs()]
+        elif body.entity_type == "sample":
+            if body.ids:
+                for sid in body.ids:
+                    s = repos.samples.get(sid)
+                    if s:
+                        data.append(s.model_dump())
+            else:
+                data = [s.model_dump() for s in repos.samples.list()]
+        elif body.entity_type == "dataset":
+            if body.ids:
+                for did in body.ids:
+                    d = repos.datasets.get_dataset(did)
+                    if d:
+                        data.append(d.model_dump())
+            else:
+                data = [d.model_dump() for d in repos.datasets.list_datasets()]
+
+        # Filter columns if specified
+        if body.columns and data:
+            filtered_data = []
+            for row in data:
+                filtered_data.append({col: row.get(col) for col in body.columns if col in row})
+            data = filtered_data
+
+        # Create Excel workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = body.entity_type.capitalize()
+
+        if data:
+            # Write headers
+            headers = list(data[0].keys())
+            header_font = Font(bold=True)
+            for col_idx, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_idx, value=header)
+                cell.font = header_font
+
+            # Write data rows
+            for row_idx, row in enumerate(data, 2):
+                for col_idx, header in enumerate(headers, 1):
+                    value = row.get(header)
+                    # Convert complex types to string
+                    if isinstance(value, (dict, list)):
+                        value = str(value)
+                    ws.cell(row=row_idx, column=col_idx, value=value)
+
+        # Save to BytesIO
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        # Generate filename
+        filename = body.filename or f"{body.entity_type}_export.xlsx"
+
+        # Return as file response
+        return StreamingResponse(
+            buffer,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
 
     # ------------------------------------------------------------------
@@ -701,7 +1025,9 @@ def create_app(
         page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=500),
     ):
         edges = repos.recommendations.list_recommendations_for_source(video_id)
-        return _paginate(edges, cursor=cursor, page_size=page_size, key=_edge_key)
+        return _paginate(
+            edges, cursor=cursor, page_size=page_size, key=_recommendation_edge_key
+        )
 
     @app.get(
         f"{prefix}/network/recommendations/summary",

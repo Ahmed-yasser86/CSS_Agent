@@ -27,11 +27,19 @@ DEFAULT_RETRIES = 3
 DEFAULT_RETRY_BACKOFF = 2.0
 DEFAULT_SOCKET_TIMEOUT = 30.0
 DEFAULT_REQUEST_DELAY_SECONDS = 0.5
+DEFAULT_ENRICHMENT_CONCURRENCY = 4
 #: Single documented comment cap per video (reconciled from the former
 #: 5000/10000 divergence); a research video cannot legitimately yield more.
 DEFAULT_MAX_COMMENTS_PER_VIDEO = 10000
 DEFAULT_COLLECT_COMMENTS = True
 DEFAULT_MAX_VIDEOS_PER_CHANNEL = 100000  # safety ceiling; channel pagination is incremental anyway
+#: Deep per-video enrichment (full stats + comments) for channel runs is on by
+#: default so likes/comments are collected. Bound it with ``max_videos_to_enrich``.
+DEFAULT_ENRICH_VIDEO_STATS = True
+#: Default cap on deep-enriched videos per channel run. Bounds the cost of a
+#: default channel scrape; researchers can raise it (or set 0 = unlimited) via
+#: ``SOCIAL_MAX_VIDEOS_TO_ENRICH`` or the per-run spec.
+DEFAULT_MAX_VIDEOS_TO_ENRICH = 50
 DEFAULT_TRANSCRIPT_LANG = "en"  # best-effort transcript language preference
 
 # Persistence defaults
@@ -123,6 +131,21 @@ class ScraperSettings:
             "SOCIAL_REQUEST_DELAY_SECONDS", DEFAULT_REQUEST_DELAY_SECONDS
         )
     )
+    enrichment_concurrency: int = field(
+        default_factory=lambda: _env_int(
+            "SOCIAL_ENRICHMENT_CONCURRENCY", DEFAULT_ENRICHMENT_CONCURRENCY
+        )
+    )
+    """Number of parallel per-video deep-enrichment workers in a channel run.
+
+    Tune ``enrichment_concurrency`` and ``request_delay_seconds`` together:
+    raise the concurrency to overlap independent network requests (metadata,
+    comments, transcripts of *different* videos), and keep/raise the delay to
+    bound the aggregate request rate (the delay paces the shared limiter, so
+    more workers does not mean more requests per second - only more overlap).
+    A delay of ``0`` disables pacing entirely (use only against tolerant
+    sources or via a proxy).
+    """
     impersonate: str | None = field(
         default_factory=lambda: _env_str("SOCIAL_IMPERSONATE", "") or None
     )
@@ -157,19 +180,42 @@ class CollectionSettings:
         )
     )
     enrich_video_stats: bool = field(
-        default_factory=lambda: _env_bool("SOCIAL_ENRICH_VIDEO_STATS", False)
+        default_factory=lambda: _env_bool(
+            "SOCIAL_ENRICH_VIDEO_STATS", DEFAULT_ENRICH_VIDEO_STATS
+        )
     )
-    """When True, the channel workflow deep-extracts each discovered video to
-    capture full statistics (views/likes/comments) and optionally comments.
-    Expensive on large channels - bound it with ``max_videos_to_enrich``."""
+    """When True (default), the channel workflow deep-extracts each discovered
+    video to capture full statistics (views/likes/comments) and optionally
+    comments. Bounded by ``max_videos_to_enrich``."""
     max_videos_to_enrich: int | None = field(
-        default_factory=lambda: _env_int("SOCIAL_MAX_VIDEOS_TO_ENRICH", 0) or None
+        default_factory=lambda: _env_int(
+            "SOCIAL_MAX_VIDEOS_TO_ENRICH", DEFAULT_MAX_VIDEOS_TO_ENRICH
+        )
+        or None
     )
+    """Cap on deep-enriched videos per channel run. ``None`` (env ``0``) means
+    no cap; the default bounds per-run cost while still capturing likes and
+    comments for the first ``DEFAULT_MAX_VIDEOS_TO_ENRICH`` videos."""
     extract_flat: bool = field(
         default_factory=lambda: _env_bool("SOCIAL_EXTRACT_FLAT", True)
     )
     """When True, channel discovery uses flat playlist entries (fast, but only
     stable metadata); full per-video extraction happens incrementally."""
+    include_live_videos: bool = field(
+        default_factory=lambda: _env_bool("SOCIAL_INCLUDE_LIVE_VIDEOS", False)
+    )
+    """When True, channel discovery includes live videos (streams) in addition
+    to regular uploaded videos. Live videos are extracted from the channel's
+    live tab in addition to the regular videos tab."""
+    video_tabs: list[str] | None = field(
+        default_factory=lambda: _env_list("SOCIAL_VIDEO_TABS", []) or None
+    )
+    """Which YouTube tabs to scrape for videos. Options: 'videos', 'shorts', 'streams', 'podcasts', 'stacks', 'new', 'top'.
+    Defaults to ['videos', 'shorts'] if not specified."""
+    scrape_live_only: bool = field(
+        default_factory=lambda: _env_bool("SOCIAL_SCRAPE_LIVE_ONLY", False)
+    )
+    """When True, only scrape the 'streams' tab (live videos). Overrides video_tabs."""
 
 
 @dataclass(frozen=True)

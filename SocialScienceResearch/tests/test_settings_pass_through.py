@@ -27,6 +27,7 @@ from SocialScienceResearch.config.settings import (
     RepositorySettings,
     SamplingSettings,
     SocialScienceSettings,
+    _env_bool,
 )
 from SocialScienceResearch.domain.models import (
     Channel,
@@ -56,6 +57,34 @@ def test_comment_cap_is_single_default() -> None:
 
     assert CollectionSettings().max_comments_per_video == DEFAULT_MAX_COMMENTS_PER_VIDEO
     assert not hasattr(CollectionSettings(), "extra_comment_max")
+
+
+def test_channel_enrichment_defaults_on_by_default() -> None:
+    from SocialScienceResearch.config.settings import (
+        DEFAULT_ENRICH_VIDEO_STATS,
+        DEFAULT_MAX_VIDEOS_TO_ENRICH,
+    )
+
+    settings = CollectionSettings()
+    # Channel scraping captures likes/comments out of the box (the bug this
+    # default flip fixes); the per-run cap bounds the cost.
+    assert settings.enrich_video_stats is DEFAULT_ENRICH_VIDEO_STATS
+    assert settings.enrich_video_stats is True
+    assert settings.max_videos_to_enrich == DEFAULT_MAX_VIDEOS_TO_ENRICH
+    # Env override still wins (explicit "0" remains the unbounded escape hatch).
+    assert _env_bool("SOCIAL_ENRICH_VIDEO_STATS", True) == settings.enrich_video_stats
+
+
+def test_enrichment_concurrency_default_and_override(monkeypatch) -> None:
+    from SocialScienceResearch.config.settings import (
+        DEFAULT_ENRICHMENT_CONCURRENCY,
+        ScraperSettings,
+    )
+
+    assert DEFAULT_ENRICHMENT_CONCURRENCY == 4
+    assert ScraperSettings().enrichment_concurrency == 4
+    monkeypatch.setenv("SOCIAL_ENRICHMENT_CONCURRENCY", "7")
+    assert ScraperSettings().enrichment_concurrency == 7
 
 
 def test_top_n_is_single_default() -> None:

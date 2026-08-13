@@ -101,6 +101,75 @@ class CommentFilter(BaseModel):
     keywords: list[str] = Field(default_factory=list)  # matched in comment text
 
 
+class AdvancedSamplingSpec(BaseModel):
+    """Advanced sampling specification for cross-channel, multi-video, and user-based sampling.
+
+    Supports complex researcher scenarios:
+    - Sample/population of specific user comments across all videos and channels
+    - Sample/population within specific channel(s)
+    - Sample/population of specific users with their IDs
+    - Sample/population of non-specified users across one channel but among specified videos
+    - Video filters within same channel (date range, type, duration, views, etc.)
+    - Multiple channels among specific period
+    - Combination of channel IDs, video IDs, author IDs with sampling strategies
+    """
+
+    model_config = _MODEL_CONFIG
+
+    # Sampling strategy (same as SamplingSpec)
+    strategy: SamplingStrategy
+    size: int | None = None
+    percent: float | None = None
+    seed: int | None = None
+    strata: str | None = None
+    sample_per_stratum: int | None = None
+    date_from: date | None = None
+    date_to: date | None = None
+    top_n: int | None = None
+
+    # Scope filters
+    channel_ids: list[str] = Field(default_factory=list)  # specific channels
+    run_ids: list[str] = Field(default_factory=list)  # restrict to entities first discovered in these runs
+    video_ids: list[str] = Field(default_factory=list)  # specific videos
+    author_ids: list[str] = Field(default_factory=list)  # specific author IDs
+    exclude_author_ids: list[str] = Field(default_factory=list)  # exclude specific authors
+    author_names: list[str] = Field(default_factory=list)  # include comments whose author name contains any (case-insensitive)
+    exclude_author_names: list[str] = Field(default_factory=list)  # drop comments whose author name contains any (case-insensitive)
+
+    # Video-level filters (applied when channel_ids provided)
+    video_type: str | None = None  # 'short', 'long', 'live'
+    duration_min: int | None = None
+    duration_max: int | None = None
+    views_min: int | None = None
+    views_max: int | None = None
+    upload_hour: int | None = None
+    upload_weekday: int | None = None
+    keywords: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+    category: str | None = None  # kept for backward compatibility
+    categories: list[str] = Field(default_factory=list)  # video categories (any match)
+
+    # Comment-level filters
+    min_likes: int | None = None
+    max_likes: int | None = None
+    min_replies: int | None = None
+    max_replies: int | None = None
+    only_roots: bool = False
+    only_replies: bool = False
+    is_author: bool | None = None
+    comment_keywords: list[str] = Field(default_factory=list)
+
+    # Author-overlap filters (comments of authors active across videos/channels)
+    overlap: Literal["off", "video", "channel"] | None = None  # 'video' = distinct videos, 'channel' = distinct channels
+    overlap_min: int = 2  # minimum distinct videos/channels an author must appear in
+    overlap_video_ids: list[str] = Field(default_factory=list)  # restrict overlap count to these specific videos
+    overlap_channel_ids: list[str] = Field(default_factory=list)  # restrict overlap count to these specific channels
+
+    # Sampling mode
+    entity_type: Literal["video", "comment"] = "video"  # what to sample
+    include_all_channels: bool = False  # if true, ignore channel_ids and sample across all
+
+
 # ----------------------------------------------------------------------
 # ResearchQuery: operators, condition tree, evaluator
 # ----------------------------------------------------------------------

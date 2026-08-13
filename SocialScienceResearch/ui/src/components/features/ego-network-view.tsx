@@ -206,14 +206,14 @@ export function EgoNetworkView({ videoId }: { videoId: string }) {
             <ArrowDownToLine className="size-4 text-muted-foreground" aria-hidden />
             Recommended by ({context.recommended_by.length})
           </h2>
-          <DataTable columns={recommendedByColumns} rows={context.recommended_by} getRowKey={(e) => `${e.source_video_id}-${e.run_id ?? ""}`} ariaLabel="Videos recommending this video" />
+          <DataTable columns={recommendedByColumns} rows={context.recommended_by} getRowKey={(e) => `${e.source_video_id}-${e.run_id ?? ""}`} initialSortKey="position" ariaLabel="Videos recommending this video" />
         </section>
         <section aria-label="Who this video recommends">
           <h2 className="mb-2 flex items-center gap-2 text-sm font-medium">
             <ArrowUpFromLine className="size-4 text-muted-foreground" aria-hidden />
             Recommends ({context.recommends.length})
           </h2>
-          <DataTable columns={recommendsColumns} rows={context.recommends} getRowKey={(e) => `${e.recommended_video_id}-${e.run_id ?? ""}`} ariaLabel="Videos recommended by this video" />
+          <DataTable columns={recommendsColumns} rows={context.recommends} getRowKey={(e) => `${e.recommended_video_id}-${e.run_id ?? ""}`} initialSortKey="position" ariaLabel="Videos recommended by this video" />
         </section>
       </div>
     </div>

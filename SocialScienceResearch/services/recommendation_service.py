@@ -48,7 +48,10 @@ class RecommendationService(CollectionService):
             info = self._provider.extract_video(video_url)
         except AcquisitionError as exc:
             self._record_error(run, EntityType.VIDEO, None, exc.error_type, str(exc))
-            self._finish_run(run, CollectionStatus.FAILED, errors, discovered=1)
+            self._finish_run(
+                run, CollectionStatus.FAILED, errors,
+                discovered=1, succeeded=0, entities_existing=0, comments_collected=0, failed=1
+            )
             return self._result(run, errors)
 
         video = normalize_video(info, run.run_id)
@@ -61,7 +64,10 @@ class RecommendationService(CollectionService):
                 "Could not resolve a video id for the recommendation source.",
             )
             errors.append(err)
-            self._finish_run(run, CollectionStatus.FAILED, errors, discovered=1)
+            self._finish_run(
+                run, CollectionStatus.FAILED, errors,
+                discovered=1, succeeded=0, entities_existing=0, comments_collected=0, failed=1
+            )
             return self._result(run, errors)
 
         self._repos.videos.upsert_video(video)
@@ -83,7 +89,10 @@ class RecommendationService(CollectionService):
                 retryable=False,
             )
             errors.append(err)
-            self._finish_run(run, CollectionStatus.PARTIAL, errors, discovered=1)
+            self._finish_run(
+                run, CollectionStatus.PARTIAL, errors,
+                discovered=1, succeeded=0, entities_existing=0, comments_collected=0, failed=1
+            )
             result = self._result(run, errors)
             result.entities_created = 1
             return result
@@ -92,7 +101,10 @@ class RecommendationService(CollectionService):
                 run, EntityType.RECOMMENDATION, video.video_id, exc.error_type, str(exc)
             )
             errors.append(err)
-            self._finish_run(run, CollectionStatus.PARTIAL, errors, discovered=1)
+            self._finish_run(
+                run, CollectionStatus.PARTIAL, errors,
+                discovered=1, succeeded=0, entities_existing=0, comments_collected=0, failed=1
+            )
             result = self._result(run, errors)
             result.entities_created = 1
             return result
@@ -110,6 +122,8 @@ class RecommendationService(CollectionService):
             errors,
             discovered=len(edges) + 1,
             succeeded=len(edges),
+            entities_existing=0,
+            comments_collected=0,
             failed=len(errors),
         )
         result = self._result(run, errors)

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, Library, GitCompareArrows } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState, ErrorState, LoadingState } from "@/components/features/state";
@@ -77,22 +77,37 @@ export function SampleLibrary() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Tabs value={tab} onValueChange={(value) => setTab(value as "library" | "compare")}>
-          <TabsList>
-            <TabsTrigger value="library">Library</TabsTrigger>
-            <TabsTrigger value="compare">Compare</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <Button type="button" variant="outline" size="sm" onClick={() => setBuilderOpen(true)}>
-          <Plus className="size-4" aria-hidden />
-          New sample
-        </Button>
+    <div className="flex h-full flex-col gap-4">
+      <div className="flex-shrink-0 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Tabs value={tab} onValueChange={(value) => setTab(value as "library" | "compare")}>
+              <TabsList>
+                <TabsTrigger value="library">
+                  <Library className="size-4" aria-hidden />
+                  Library
+                </TabsTrigger>
+                <TabsTrigger value="compare">
+                  <GitCompareArrows className="size-4" aria-hidden />
+                  Compare
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => setBuilderOpen(true)}>
+            <Plus className="size-4" aria-hidden />
+            New sample
+          </Button>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {tab === "library"
+            ? "Immutable, auditable samples drawn from your corpus — each records its criteria and exact membership."
+            : "Compute pairwise overlap, union and Jaccard similarity between saved samples."}
+        </p>
       </div>
 
       {tab === "library" ? (
-        <div>
+        <div className="flex flex-col gap-4">
           {list.isLoading ? (
             <LoadingState label="Loading samples…" />
           ) : list.isError ? (
@@ -107,7 +122,13 @@ export function SampleLibrary() {
           ) : samples.length === 0 ? (
             <EmptyState
               title="No samples yet"
-              description="Create an immutable sample to preserve a population definition and its exact membership."
+              description="Preserve a population definition and its exact membership as an immutable, reproducible sample."
+              action={
+                <Button type="button" variant="outline" size="sm" onClick={() => setBuilderOpen(true)}>
+                  <Plus className="size-4" aria-hidden />
+                  Create your first sample
+                </Button>
+              }
             />
           ) : (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -118,7 +139,7 @@ export function SampleLibrary() {
           )}
 
           {list.hasNextPage ? (
-            <div className="mt-4 flex justify-center">
+            <div className="flex justify-center">
               <Button
                 type="button"
                 variant="outline"
@@ -147,6 +168,7 @@ export function SampleLibrary() {
           />
           <div className="flex items-center gap-3">
             <Button type="button" variant="outline" size="sm" onClick={runCompare}>
+              <GitCompareArrows className="size-3.5" aria-hidden />
               Compare selected
             </Button>
             {selected.size > 0 ? (

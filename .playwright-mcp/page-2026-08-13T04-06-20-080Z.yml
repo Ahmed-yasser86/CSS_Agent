@@ -1,0 +1,44 @@
+- generic [active] [ref=f3e1]:
+  - generic [ref=f3e2]:
+    - banner [ref=f3e3]:
+      - generic [ref=f3e4]:
+        - link "Social Science Research" [ref=f3e5] [cursor=pointer]:
+          - /url: /
+        - navigation "Primary" [ref=f3e10]:
+          - link "Workspace" [ref=f3e11] [cursor=pointer]:
+            - /url: /
+          - link "Collect" [ref=f3e15] [cursor=pointer]:
+            - /url: /collect
+          - link "Explorer" [ref=f3e20] [cursor=pointer]:
+            - /url: /explore
+          - link "Network" [ref=f3e26] [cursor=pointer]:
+            - /url: /network
+          - link "Samples" [ref=f3e33] [cursor=pointer]:
+            - /url: /samples
+          - link "Datasets" [ref=f3e39] [cursor=pointer]:
+            - /url: /datasets
+          - link "Projects" [ref=f3e43] [cursor=pointer]:
+            - /url: /projects
+          - link "Runs" [ref=f3e47] [cursor=pointer]:
+            - /url: /runs
+        - generic [ref=f3e52]:
+          - button "Switch to dark mode" [ref=f3e53]
+          - button "Jobs tray" [ref=f3e56]:
+            - generic [ref=f3e57]: Jobs
+          - button "Search… Ctrl K" [ref=f3e58]:
+            - generic [ref=f3e62]: Search…
+            - generic:
+              - text: Ctrl
+              - generic: K
+          - generic [ref=f3e63]:
+            - heading "Command Palette" [level=2] [ref=f3e64]
+            - paragraph [ref=f3e65]: Search for a command to run...
+    - main [ref=f3e66]:
+      - generic [ref=f3e68]:
+        - generic [ref=f3e69]:
+          - heading "Provenance ledger" [level=1] [ref=f3e70]
+          - paragraph [ref=f3e71]: Every collection run is recorded here — what was collected, when, from which source, how many entities succeeded or failed, and which configuration produced it.
+        - status [ref=f3e72]:
+          - paragraph [ref=f3e75]: Loading runs…
+    - contentinfo [ref=f3e76]: Computational Social Science Research Workbench · data is observed, never estimated · missing values are reported explicitly
+  - button "Open Next.js Dev Tools" [ref=f3e82] [cursor=pointer]

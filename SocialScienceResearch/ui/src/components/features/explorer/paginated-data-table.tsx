@@ -57,6 +57,8 @@ export interface PaginatedDataTableProps {
   onPrev: () => void;
   hasPrevious: boolean;
   onSelectRow?: (row: Record<string, unknown>) => void;
+  renderIdCell?: (value: string, row: Record<string, unknown>) => React.ReactNode;
+  renderExpandedActions?: (row: Record<string, unknown>) => React.ReactNode;
 }
 
 export function PaginatedDataTable({
@@ -71,6 +73,8 @@ export function PaginatedDataTable({
   onPrev,
   hasPrevious,
   onSelectRow,
+  renderIdCell,
+  renderExpandedActions,
 }: PaginatedDataTableProps) {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -89,7 +93,8 @@ export function PaginatedDataTable({
   }, []);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: 0 });
+    const el = scrollRef.current;
+    if (el && typeof el.scrollTo === "function") el.scrollTo({ top: 0 });
   }, [entity, rows]);
 
   if (rows.length === 0) {
@@ -117,6 +122,29 @@ export function PaginatedDataTable({
 
   function handleScroll(event: React.UIEvent<HTMLDivElement>) {
     setScrollTop(event.currentTarget.scrollTop);
+  }
+
+  // Generate a guaranteed-unique key per rendered row. The entity id is
+  // prefixed for stable identity, and the absolute virtual index is appended so
+  // two rows sharing the same id (e.g. historical duplicates in the store) can
+  // never collide - React keys must be unique across the rendered list.
+  function getRowKey(row: Record<string, unknown>, idx: number): string {
+    const position = start + idx;
+    const id = row[idColumn];
+    if (id !== undefined && id !== null) {
+      return `${String(id)}__${position}`;
+    }
+    const fallback = row.video_id ?? row.comment_id ?? row.channel_id ?? row.recommended_video_id ?? row.author_id;
+    if (fallback !== undefined && fallback !== null) {
+      return `${String(fallback)}__${position}`;
+    }
+    const rowStr = JSON.stringify(row);
+    let hash = 0;
+    for (let i = 0; i < rowStr.length; i++) {
+      hash = ((hash << 5) - hash) + rowStr.charCodeAt(i);
+      hash |= 0;
+    }
+    return `row-${position}-${Math.abs(hash)}`;
   }
 
   return (
@@ -154,10 +182,10 @@ export function PaginatedDataTable({
               </tr>
             ) : null}
             {visibleRows.map((row, index) => {
-              const key = row[idColumn] ?? start + index;
+              const key = getRowKey(row, index);
               const isExpanded = expanded === start + index;
               return (
-                <TableRow key={String(key)}>
+                <TableRow key={key}>
                   <TableCell>
                     <Button
                       type="button"
@@ -172,11 +200,19 @@ export function PaginatedDataTable({
                       {isExpanded ? "–" : "+"}
                     </Button>
                   </TableCell>
-                  {visibleColumns.map((column) => (
-                    <TableCell key={column.name} className={columnValueClass(column.data_type)}>
-                      {formatCellValue(row[column.name], column.data_type)}
-                    </TableCell>
-                  ))}
+                  {visibleColumns.map((column) => {
+                    const value = row[column.name];
+                    const isIdColumn = column.name === idColumn;
+                    const content =
+                      isIdColumn && renderIdCell && value !== undefined && value !== null
+                        ? renderIdCell(String(value), row) ?? formatCellValue(value, column.data_type)
+                        : formatCellValue(value, column.data_type);
+                    return (
+                      <TableCell key={column.name} className={columnValueClass(column.data_type)}>
+                        {content}
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               );
             })}
@@ -194,18 +230,21 @@ export function PaginatedDataTable({
 
       {expanded !== null && expanded < rows.length ? (
         <div className="rounded-md border bg-muted/20 p-3">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-medium">Full row</h3>
-            {onSelectRow ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => onSelectRow(rows[expanded])}
-              >
-                Open record
-              </Button>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              {renderExpandedActions ? renderExpandedActions(rows[expanded]) : null}
+              {onSelectRow ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onSelectRow(rows[expanded])}
+                >
+                  Open record
+                </Button>
+              ) : null}
+            </div>
           </div>
           <dl className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
             {Object.entries(rows[expanded]).map(([name, value]) => {

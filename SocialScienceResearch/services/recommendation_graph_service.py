@@ -139,6 +139,30 @@ class RecommendationGraphService:
                     "title": data.get("title"),
                 }
             )
+        # Feed-rank ordering: position is the slot a recommendation occupied in
+        # the source's "Up Next" rail, so the observed rail order (ranked items
+        # first, unranked last) is the canonical display order everywhere.
+        context.recommended_by = self._by_feed_rank(
+            context.recommended_by, "source_video_id"
+        )
+        context.recommends = self._by_feed_rank(
+            context.recommends, "recommended_video_id"
+        )
         context.recommended_by = context.recommended_by[:top_n]
         context.recommends = context.recommends[:top_n]
         return context
+
+    @staticmethod
+    def _by_feed_rank(
+        rows: list[dict[str, Any]], id_key: str
+    ) -> list[dict[str, Any]]:
+        """Order rows by ascending feed ``position`` (None/unknown last)."""
+        return sorted(
+            rows,
+            key=lambda row: (
+                row.get("position") is None,
+                row.get("position") if row.get("position") is not None else 0,
+                row.get("run_id") or "",
+                str(row.get(id_key) or ""),
+            ),
+        )

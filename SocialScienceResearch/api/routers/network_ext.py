@@ -45,7 +45,20 @@ def _service(request: Request) -> NetworkAnalyticsService:
 
 
 def _edge_key(edge: dict) -> tuple[str, ...]:
-    return (edge["source_video_id"], edge["recommended_video_id"])
+    """Feed-rank pagination key: source video, position, then identity.
+
+    Positions are zero-padded so string comparison mirrors numeric order and
+    ``None`` (unknown rank) sorts after ranked edges. All keys are strings so
+    cursor tokens remain comparable inside ``page_sorted``.
+    """
+    position = edge["position"]
+    position_key = f"{position:08d}" if position is not None else "~"
+    return (
+        edge["source_video_id"],
+        position_key,
+        edge["run_id"] or "",
+        edge["recommended_video_id"],
+    )
 
 
 @router.get(

@@ -85,7 +85,9 @@ export function EdgeTable({ runId }: { runId?: string }) {
                     {edge.recommended_video_id}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {edge.position === null || edge.position === undefined ? "—" : edge.position}
+                    {edge.position === null || edge.position === undefined
+                      ? "—"
+                      : `#${edge.position + 1}`}
                   </TableCell>
                   <TableCell className="max-w-xs truncate text-xs text-muted-foreground">
                     {edge.title ?? "—"}

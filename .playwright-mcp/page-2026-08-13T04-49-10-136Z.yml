@@ -1,0 +1,317 @@
+- generic [ref=f4e1]:
+  - generic [ref=f4e2]:
+    - banner [ref=f4e3]:
+      - generic [ref=f4e4]:
+        - link "Social Science Research" [ref=f4e5] [cursor=pointer]:
+          - /url: /
+        - navigation "Primary" [ref=f4e10]:
+          - link "Workspace" [ref=f4e11] [cursor=pointer]:
+            - /url: /
+          - link "Collect" [ref=f4e15] [cursor=pointer]:
+            - /url: /collect
+          - link "Explorer" [ref=f4e20] [cursor=pointer]:
+            - /url: /explore
+          - link "Network" [ref=f4e26] [cursor=pointer]:
+            - /url: /network
+          - link "Samples" [ref=f4e33] [cursor=pointer]:
+            - /url: /samples
+          - link "Datasets" [ref=f4e39] [cursor=pointer]:
+            - /url: /datasets
+          - link "Projects" [ref=f4e43] [cursor=pointer]:
+            - /url: /projects
+          - link "Runs" [ref=f4e47] [cursor=pointer]:
+            - /url: /runs
+        - generic [ref=f4e52]:
+          - button "Switch to dark mode" [ref=f4e53]
+          - button "Jobs tray" [ref=f4e56]:
+            - generic [ref=f4e57]: Jobs
+          - button "Search… Ctrl K" [ref=f4e58]:
+            - generic [ref=f4e62]: Search…
+            - generic:
+              - text: Ctrl
+              - generic: K
+          - generic [ref=f4e63]:
+            - heading "Command Palette" [level=2] [ref=f4e64]
+            - paragraph [ref=f4e65]: Search for a command to run...
+    - main [ref=f4e66]:
+      - generic [ref=f4e68]:
+        - generic [ref=f4e69]:
+          - generic [ref=f4e75]:
+            - heading "Research Samples" [level=1] [ref=f4e76]
+            - paragraph [ref=f4e77]: Design reproducible samples from your YouTube corpus, record their exact criteria and membership, and compare overlap across runs.
+          - tablist [ref=f4e79]:
+            - tab "Sampling Workbench" [selected] [ref=f4e80]
+            - tab "Sample Library" [ref=f4e81]
+        - generic [ref=f4e83]:
+          - generic [ref=f4e85]:
+            - generic [ref=f4e86]:
+              - heading [level=2] [ref=f4e87]
+              - paragraph [ref=f4e97]: Build reproducible comment samples in four steps — scope, filter, method, and save. Double-click the title for an expanded workspace.
+            - generic [ref=f4e98]:
+              - button "Save Query" [ref=f4e99]
+              - button "Refresh Preview" [ref=f4e100]
+              - button "Run Sample" [ref=f4e101]
+          - generic [ref=f4e104]:
+            - navigation "Sampling steps" [ref=f4e105]:
+              - button "1 Scope" [ref=f4e106]:
+                - generic [ref=f4e107]: "1"
+                - text: Scope
+              - button "2 Filters" [ref=f4e110]:
+                - generic [ref=f4e111]: "2"
+                - text: Filters
+              - button "3 Method" [ref=f4e113]:
+                - generic [ref=f4e114]: "3"
+                - text: Method
+              - button "4 Labels & Save" [ref=f4e118]:
+                - generic [ref=f4e119]: "4"
+                - text: Labels & Save
+            - generic [ref=f4e124]:
+              - generic [ref=f4e125]:
+                - generic [ref=f4e126]:
+                  - generic [ref=f4e127]:
+                    - generic [ref=f4e128]: "1"
+                    - generic [ref=f4e129]:
+                      - heading "Choose your scope" [level=3] [ref=f4e130]
+                      - paragraph [ref=f4e131]: Pick the universe of data this sample draws from, or start from a template.
+                  - generic [ref=f4e132]:
+                    - generic [ref=f4e139]:
+                      - generic [ref=f4e140]: Start from a template
+                      - generic [ref=f4e141]: Quick recipes that pre-configure the scope, filters and method for you.
+                    - generic [ref=f4e143]:
+                      - button "By Author(s) Sample comments from specific users" [ref=f4e144]:
+                        - generic [ref=f4e146]:
+                          - generic [ref=f4e147]: By Author(s)
+                          - generic [ref=f4e148]: Sample comments from specific users
+                      - button "By Channel All comments in selected channels" [ref=f4e149]:
+                        - generic [ref=f4e151]:
+                          - generic [ref=f4e152]: By Channel
+                          - generic [ref=f4e153]: All comments in selected channels
+                      - button "By Video Criteria Filter by video attributes (duration, views, date)" [ref=f4e154]:
+                        - generic [ref=f4e156]:
+                          - generic [ref=f4e157]: By Video Criteria
+                          - generic [ref=f4e158]: Filter by video attributes (duration, views, date)
+                      - button "Random Sample Random selection from all data" [ref=f4e159]:
+                        - generic [ref=f4e161]:
+                          - generic [ref=f4e162]: Random Sample
+                          - generic [ref=f4e163]: Random selection from all data
+                      - button "Stratified by Time Balanced across months/weekdays" [ref=f4e164]:
+                        - generic [ref=f4e166]:
+                          - generic [ref=f4e167]: Stratified by Time
+                          - generic [ref=f4e168]: Balanced across months/weekdays
+                      - button "High Engagement Comments with many likes/replies" [ref=f4e169]:
+                        - generic [ref=f4e171]:
+                          - generic [ref=f4e172]: High Engagement
+                          - generic [ref=f4e173]: Comments with many likes/replies
+                  - generic [ref=f4e174]:
+                    - generic [ref=f4e182]:
+                      - generic [ref=f4e183]: Define the scope
+                      - generic [ref=f4e184]: Restrict the population to everything, specific channels, authors, or a custom mix.
+                    - generic [ref=f4e187]:
+                      - generic [ref=f4e188]: Scope
+                      - paragraph [ref=f4e189]: Choose the universe of data this sample draws from.
+                      - generic [ref=f4e190]:
+                        - button "All Data" [pressed] [ref=f4e191]
+                        - button "By Channel" [ref=f4e197]
+                        - button "By Author" [ref=f4e201]
+                        - button "Custom" [ref=f4e205]
+                - generic [ref=f4e209]:
+                  - generic [ref=f4e210]:
+                    - generic [ref=f4e211]: "2"
+                    - generic [ref=f4e212]:
+                      - heading "Narrow the population" [level=3] [ref=f4e213]
+                      - paragraph [ref=f4e214]: Apply optional filters across authors, channels, videos, comments, overlap and time.
+                  - generic [ref=f4e215]:
+                    - generic [ref=f4e217]:
+                      - generic [ref=f4e222]:
+                        - generic [ref=f4e223]: Filter the Sample
+                        - generic [ref=f4e224]: Each section narrows a different layer — authors, channels, videos, comments, overlap and time. Sections start collapsed to keep things calm.
+                      - generic [ref=f4e225]: 2 active
+                    - generic [ref=f4e227]:
+                      - heading [level=3] [ref=f4e229]:
+                        - button "Author Filters Help Choose which comment authors to include or exclude." [ref=f4e230]:
+                          - generic [ref=f4e231]:
+                            - generic [ref=f4e237]:
+                              - text: Author Filters
+                              - generic "Help" [ref=f4e238]
+                            - generic [ref=f4e242]: Choose which comment authors to include or exclude.
+                      - heading [level=3] [ref=f4e246]:
+                        - button "Channel Filters Help Restrict the sample to specific channels, on top of the scope." [ref=f4e247]:
+                          - generic [ref=f4e248]:
+                            - generic [ref=f4e254]:
+                              - text: Channel Filters
+                              - generic "Help" [ref=f4e255]
+                            - generic [ref=f4e259]: Restrict the sample to specific channels, on top of the scope.
+                      - heading [level=3] [ref=f4e263]:
+                        - button "Video Filters Help Restrict which videos enter the population." [ref=f4e264]:
+                          - generic [ref=f4e265]:
+                            - generic [ref=f4e270]:
+                              - text: Video Filters
+                              - generic "Help" [ref=f4e271]
+                            - generic [ref=f4e275]: Restrict which videos enter the population.
+                      - heading [level=3] [ref=f4e279]:
+                        - button "Comment Filters Help Filter the comments themselves by engagement, type or text." [ref=f4e280]:
+                          - generic [ref=f4e281]:
+                            - generic [ref=f4e286]:
+                              - text: Comment Filters
+                              - generic "Help" [ref=f4e287]
+                            - generic [ref=f4e291]: Filter the comments themselves by engagement, type or text.
+                      - generic [ref=f4e294]:
+                        - heading [level=3] [ref=f4e295]:
+                          - button "Author Overlap Filters Help Keep authors who appear across several specific videos or channels (pick the entities, or count across all)." [expanded] [ref=f4e296]:
+                            - generic [ref=f4e297]:
+                              - generic [ref=f4e305]:
+                                - text: Author Overlap Filters
+                                - generic "Help" [ref=f4e306]
+                              - generic [ref=f4e310]: Keep authors who appear across several specific videos or channels (pick the entities, or count across all).
+                        - region "Author Overlap Filters Help Keep authors who appear across several specific videos or channels (pick the entities, or count across all)." [ref=f4e547]:
+                          - generic [ref=f4e549]:
+                            - generic [ref=f4e550]:
+                              - generic [ref=f4e551]:
+                                - generic [ref=f4e552]: Overlap Mode
+                                - generic "Help" [ref=f4e553]
+                              - combobox [ref=f4e557]:
+                                - generic [ref=f4e558]: video
+                                - img: ▼
+                              - textbox [ref=f4e559]: video
+                            - generic [ref=f4e569]:
+                              - generic [ref=f4e570]:
+                                - generic [ref=f4e571]: Specific Videos
+                                - generic "Help" [ref=f4e572]
+                              - generic [ref=f4e576]:
+                                - generic [ref=f4e577]:
+                                  - textbox "Enter video ID and press Add" [active] [ref=f4e578]
+                                  - button "Add" [ref=f4e579]
+                                - generic [ref=f4e590]:
+                                  - generic [ref=f4e591]: PSlq0lg5uNc
+                                  - button "×" [ref=f4e592]
+                                - paragraph [ref=f4e580]: Authors must be active across these specific videos to qualify.
+                            - generic [ref=f4e560]:
+                              - generic [ref=f4e561]:
+                                - generic [ref=f4e562]: Minimum Overlap Count
+                                - generic "Help" [ref=f4e563]
+                              - spinbutton "Minimum overlap count" [ref=f4e567]: "2"
+                              - paragraph [ref=f4e568]: Authors active in fewer distinct videos among the selected videos are removed.
+                      - heading [level=3] [ref=f4e314]:
+                        - button "Temporal Filters Help Narrow the population by publish or comment dates." [ref=f4e315]:
+                          - generic [ref=f4e316]:
+                            - generic [ref=f4e321]:
+                              - text: Temporal Filters
+                              - generic "Help" [ref=f4e322]
+                            - generic [ref=f4e326]: Narrow the population by publish or comment dates.
+                - generic [ref=f4e329]:
+                  - generic [ref=f4e330]:
+                    - generic [ref=f4e331]: "3"
+                    - generic [ref=f4e332]:
+                      - heading "Choose a sampling method" [level=3] [ref=f4e333]
+                      - paragraph [ref=f4e334]: Decide how records are drawn from the filtered population.
+                  - generic [ref=f4e335]:
+                    - generic [ref=f4e342]:
+                      - generic [ref=f4e343]:
+                        - text: Sampling Method
+                        - generic "Help" [ref=f4e344]
+                      - generic [ref=f4e348]: How records are drawn from the filtered population.
+                    - radiogroup [ref=f4e350]:
+                      - radio [ref=f4e351]:
+                        - generic [ref=f4e361]:
+                          - paragraph [ref=f4e362]: Full Population
+                          - paragraph [ref=f4e363]: Return all matching records. No sampling applied.
+                      - radio [ref=f4e364]
+                      - radio "Random Sample Select a random subset of the population. Sample Size 500 Or Percent (%) Seed (optional) Leave blank for a new random seed each run." [checked] [ref=f4e365]:
+                        - generic [ref=f4e371]:
+                          - generic [ref=f4e380]:
+                            - paragraph [ref=f4e381]: Random Sample
+                            - paragraph [ref=f4e382]: Select a random subset of the population.
+                          - generic [ref=f4e384]:
+                            - generic [ref=f4e385]:
+                              - generic [ref=f4e386]: Sample Size
+                              - spinbutton "500" [ref=f4e387]
+                            - generic [ref=f4e388]:
+                              - generic [ref=f4e389]: Or Percent (%)
+                              - spinbutton "10" [ref=f4e390]
+                            - generic [ref=f4e391]:
+                              - generic [ref=f4e392]: Seed (optional)
+                              - spinbutton "Auto-generated" [ref=f4e393]
+                              - paragraph [ref=f4e394]: Leave blank for a new random seed each run.
+                      - radio [checked] [ref=f4e395]
+                      - radio [ref=f4e396]:
+                        - generic [ref=f4e404]:
+                          - paragraph [ref=f4e405]: Stratified Sample
+                          - paragraph [ref=f4e406]: Balanced selection across groups (strata).
+                      - radio [ref=f4e407]
+                      - radio [ref=f4e408]:
+                        - generic [ref=f4e417]:
+                          - paragraph [ref=f4e418]: Top X% by Metric
+                          - paragraph [ref=f4e419]: Keep the top fraction of records ranked by likes, replies, views or comments.
+                      - radio [ref=f4e420]
+                - generic [ref=f4e421]:
+                  - generic [ref=f4e422]:
+                    - generic [ref=f4e423]: "4"
+                    - generic [ref=f4e424]:
+                      - heading "Labels & save" [level=3] [ref=f4e425]
+                      - paragraph [ref=f4e426]: Document your sample with metadata and choose how it is stored.
+                  - generic [ref=f4e427]:
+                    - generic [ref=f4e435]:
+                      - generic [ref=f4e436]:
+                        - text: Labels & Save Options
+                        - generic "Help" [ref=f4e437]
+                      - generic [ref=f4e441]: Document the sample for reproducibility, then choose how it is stored.
+                    - generic [ref=f4e442]:
+                      - generic [ref=f4e443]:
+                        - heading "Research Labels" [level=4] [ref=f4e444]
+                        - generic [ref=f4e445]:
+                          - generic [ref=f4e446]:
+                            - generic [ref=f4e447]:
+                              - generic [ref=f4e448]: Research Question
+                              - generic "Help" [ref=f4e449]
+                            - textbox "e.g. How does comment engagement differ across channels?" [ref=f4e453]
+                          - generic [ref=f4e454]:
+                            - generic [ref=f4e455]:
+                              - generic [ref=f4e456]: Methodology
+                              - generic "Help" [ref=f4e457]
+                            - combobox [ref=f4e461]:
+                              - generic [ref=f4e462]: Select or type custom...
+                              - img: ▼
+                            - textbox [ref=f4e463]
+                          - generic [ref=f4e464]:
+                            - generic [ref=f4e465]:
+                              - generic [ref=f4e466]: Notes
+                              - generic "Help" [ref=f4e467]
+                            - textbox "Additional notes..." [ref=f4e471]
+                      - generic [ref=f4e472]:
+                        - heading "Custom Labels" [level=4] [ref=f4e473]
+                        - button "Add Custom Label" [ref=f4e474]
+                      - generic [ref=f4e475]:
+                        - heading "Save As" [level=4] [ref=f4e476]
+                        - radiogroup [ref=f4e477]:
+                          - radio [checked] [ref=f4e478]:
+                            - generic [ref=f4e490]:
+                              - paragraph [ref=f4e491]: Individual Sample
+                              - paragraph [ref=f4e492]: Save as a standalone sample in the library.
+                          - radio [checked] [ref=f4e493]
+                          - radio [ref=f4e494]:
+                            - generic [ref=f4e503]:
+                              - paragraph [ref=f4e504]: Add to Dataset
+                              - paragraph [ref=f4e505]: Combine with other samples into a dataset.
+                          - radio [ref=f4e506]
+              - complementary [ref=f4e507]:
+                - generic [ref=f4e508]:
+                  - generic [ref=f4e510]:
+                    - generic [ref=f4e511]:
+                      - generic [ref=f4e512]: Live Preview
+                      - generic [ref=f4e516]: Sizes update when you preview or run a sample.
+                    - button "Refresh preview" [ref=f4e517]
+                  - generic [ref=f4e518]:
+                    - generic [ref=f4e519]:
+                      - generic [ref=f4e520]:
+                        - generic [ref=f4e521]: Population
+                        - paragraph [ref=f4e527]: "0"
+                      - generic [ref=f4e528]:
+                        - generic [ref=f4e529]: Sample size
+                        - paragraph [ref=f4e533]: "0"
+                    - generic [ref=f4e588]: random · comment
+                    - generic [ref=f4e534]:
+                      - text: Sample IDs
+                      - paragraph [ref=f4e535]: Run the sample to see IDs
+    - contentinfo [ref=f4e536]: Computational Social Science Research Workbench · data is observed, never estimated · missing values are reported explicitly
+  - button "Open Next.js Dev Tools" [ref=f4e542] [cursor=pointer]
+  - alert [ref=f4e546]

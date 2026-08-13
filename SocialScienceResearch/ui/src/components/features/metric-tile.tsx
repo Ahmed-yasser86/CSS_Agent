@@ -10,12 +10,12 @@ export function MetricTile({
   suffix,
 }: {
   label: string;
-  value: ValueWithAvailability;
+  value?: ValueWithAvailability | null;
   observedAt?: string | null;
   suffix?: string;
 }) {
   const display =
-    value.value === null
+    !value || value.value === null
       ? "—"
       : `${formatCompact(value.value)}${suffix ? ` ${suffix}` : ""}`;
 
@@ -25,7 +25,7 @@ export function MetricTile({
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {label}
         </p>
-        <AvailabilityBadge availability={value.availability} withLabel={false} />
+        <AvailabilityBadge availability={value?.availability} withLabel={false} />
       </div>
       <p className="text-2xl font-semibold tabular-nums">{display}</p>
       {observedAt ? (

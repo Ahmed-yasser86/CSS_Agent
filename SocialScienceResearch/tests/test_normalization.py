@@ -68,6 +68,18 @@ def test_normalize_video_observation() -> None:
     assert obs.collection_run_id == RUN_ID
 
 
+def test_normalize_video_live_status_flows_for_upcoming() -> None:
+    raw = _load("video_raw.json")
+    raw["live_status"] = "is_upcoming"
+    video = normalize_video(raw, RUN_ID)
+    assert video is not None
+    assert video.live_status == "is_upcoming"
+    obs = normalize_video_observation(raw, RUN_ID)
+    assert obs is not None
+    # The observation preserves the live status in its provenance payload.
+    assert obs.raw_json["live_status"] == "is_upcoming"
+
+
 def test_normalize_video_missing_fields() -> None:
     raw = {"id": "abc", "title": "Minimal"}
     video = normalize_video(raw, RUN_ID)

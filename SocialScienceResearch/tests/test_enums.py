@@ -72,6 +72,7 @@ def test_sampling_strategies_covered() -> None:
         "top_engagement",
         "bottom_engagement",
         "top_comments",
+        "top_replies",
         "top_comment_rate",
         "top_like_rate",
         "longest",

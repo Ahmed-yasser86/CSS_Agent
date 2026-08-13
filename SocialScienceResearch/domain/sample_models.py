@@ -33,6 +33,14 @@ class Sample(BaseModel):
     ``member_ids`` holds the full ordered membership (reassembled from the
     chunked sidecar when ``overflow`` is true), and ``criteria_json`` records
     the exact criteria so the sample can be audited and reproduced.
+
+    The ``labels`` field supports three namespaces:
+    - ``system``: auto-populated provenance (created_at, created_by, source_corpus, collection_run_id)
+    - ``research``: researcher-defined design metadata (research_question, methodology, population, sampling_frame, notes)
+    - ``custom``: arbitrary key-value pairs created by the researcher
+
+    The ``scope`` field tracks the data-space boundaries of this sample
+    (channel_ids, video_ids, author_ids, date_from, date_to) for reproducibility.
     """
 
     model_config = ConfigDict(extra="allow")
@@ -49,6 +57,10 @@ class Sample(BaseModel):
     overflow: bool = False
     created_at: datetime = Field(default_factory=utcnow)
     created_by_run_id: str | None = None
+
+    scope: dict[str, Any] = Field(default_factory=dict)
+    filters_applied: dict[str, Any] = Field(default_factory=dict)
+    labels: dict[str, Any] = Field(default_factory=dict)
 
 
 class CreateSampleRequest(BaseModel):
@@ -116,3 +128,21 @@ class DeleteSampleResponse(BaseModel):
 
     sample_id: str
     deleted: bool = True
+
+
+class SampleScope(BaseModel):
+    """Scope boundaries for sample reproducibility."""
+
+    channel_ids: list[str] = Field(default_factory=list)
+    video_ids: list[str] = Field(default_factory=list)
+    author_ids: list[str] = Field(default_factory=list)
+    date_from: str | None = None
+    date_to: str | None = None
+
+
+class SampleLabels(BaseModel):
+    """Three-namespace labeling system for samples."""
+
+    system: dict[str, Any] = Field(default_factory=dict)
+    research: dict[str, Any] = Field(default_factory=dict)
+    custom: dict[str, Any] = Field(default_factory=dict)

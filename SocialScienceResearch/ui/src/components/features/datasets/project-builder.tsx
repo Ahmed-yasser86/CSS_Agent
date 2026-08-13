@@ -28,6 +28,7 @@ import type {
   CreateProjectInput,
   ProjectTarget,
   ProjectTargetKind,
+  ResearchProject,
 } from "@/lib/dataset-types";
 
 const TARGET_KINDS: { value: ProjectTargetKind; label: string }[] = [
@@ -43,7 +44,7 @@ export function ProjectBuilder({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreated?: () => void;
+  onCreated?: (project: ResearchProject) => void;
 }) {
   const { toast } = useToast();
   const [name, setName] = useState("");
@@ -108,9 +109,9 @@ export function ProjectBuilder({
 
     setCreating(true);
     try {
-      await createProject(body);
+      const created = await createProject(body);
       toast({ title: "Project saved", description: name.trim() });
-      onCreated?.();
+      onCreated?.(created);
       onOpenChange(false);
     } catch (error) {
       toast({

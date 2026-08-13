@@ -202,19 +202,29 @@ def repos(tmp_path):
             )
         )
 
-    repos.recommendations.save_recommendation(
-        RecommendationObservation(
-            observation_id="rec_b8_1",
-            collection_run_id="run_b8_first",
-            source_video_id="v_a",
-            recommended_video_id="v_b",
-            position=0,
-            channel_id=CHANNEL_ID,
-            title="Network Science Lecture",
-            observed_at=T1,
-            raw_json={"kind": "recommendation", "position": 0},
+    # Observation ids are deliberately scrambled relative to the feed rail so
+    # the default explorer order must come from the feed rank, not the primary
+    # key (rec_b8_2 has position 2, rec_b8_3 position 1).
+    rec_edges = [
+        dict(observation_id="rec_b8_1", recommended_video_id="v_b", position=0, title="Network Science Lecture"),
+        dict(observation_id="rec_b8_2", recommended_video_id="v_c", position=2, title="Missing Metrics Clip"),
+        dict(observation_id="rec_b8_3", recommended_video_id="v_d", position=1, title="Causal Inference"),
+        dict(observation_id="rec_b8_4", recommended_video_id="v_a", position=None, title="Regression Analysis"),
+    ]
+    for spec in rec_edges:
+        repos.recommendations.save_recommendation(
+            RecommendationObservation(
+                observation_id=spec["observation_id"],
+                collection_run_id="run_b8_first",
+                source_video_id="v_a",
+                recommended_video_id=spec["recommended_video_id"],
+                position=spec["position"],
+                channel_id=CHANNEL_ID,
+                title=spec["title"],
+                observed_at=T1,
+                raw_json={"kind": "recommendation", "position": spec["position"]},
+            )
         )
-    )
 
     repos.store.close()
 
@@ -329,9 +339,27 @@ def test_explore_cursor_pagination_is_stable(explorer) -> None:
 
 def test_explore_recommendation_rows_carry_observation_id(explorer) -> None:
     result = explorer.explore("recommendation")
-    assert [item["observation_id"] for item in result.items] == ["rec_b8_1"]
+    # Default order is the feed rank (position 0, 1, 2, then unknown last),
+    # not the observation-id primary key order.
+    assert [item["observation_id"] for item in result.items] == [
+        "rec_b8_1",
+        "rec_b8_3",
+        "rec_b8_2",
+        "rec_b8_4",
+    ]
     assert result.items[0]["source_video_id"] == "v_a"
     assert result.items[0]["recommended_video_id"] == "v_b"
+
+
+def test_explore_recommendation_default_order_is_feed_ranked(explorer) -> None:
+    result = explorer.explore("recommendation")
+    assert [(item["position"], item["recommended_video_id"]) for item in result.items] == [
+        (0, "v_b"),
+        (1, "v_d"),
+        (2, "v_c"),
+        (None, "v_a"),
+    ]
+    assert result.total == 4
 
 
 def test_explore_author_rows_aggregate_comments(explorer) -> None:

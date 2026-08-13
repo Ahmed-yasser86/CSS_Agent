@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import {
 import { LoadingState, ErrorState } from "@/components/features/state";
 import { PaginatedDataTable } from "@/components/features/explorer/paginated-data-table";
 import { DetailDrawer } from "@/components/features/explorer/detail-drawer";
+import { VideoMetadataPreview } from "@/components/features/video-metadata-preview";
 import { useExploreRecords } from "@/services/explorer";
 import type {
   ExplorerEntity,
@@ -216,6 +218,35 @@ export function RecordExplorer({
           onPrev={goPrev}
           hasPrevious={history.length > 0}
           onSelectRow={openRecord}
+          renderIdCell={(value, row) => {
+            const href = detailHref(entity, row);
+            if (!href) return null;
+            return (
+              <Link
+                href={href}
+                className="text-primary underline-offset-2 hover:underline"
+              >
+                {value}
+              </Link>
+            );
+          }}
+          renderExpandedActions={(row) => {
+            const href =
+              entity === "comment"
+                ? commentThreadHref(row)
+                : detailHref(entity, row);
+            if (!href) return null;
+            return (
+              <Button
+                render={<Link href={href} />}
+                nativeButton={false}
+                variant="outline"
+                size="sm"
+              >
+                {entity === "comment" ? "View reply tree" : "View details"}
+              </Button>
+            );
+          }}
         />
       )}
 
@@ -229,12 +260,43 @@ export function RecordExplorer({
         row={selected?.row ?? {}}
         columns={columns}
       />
+      {selected?.entity === "video" && (
+        <VideoMetadataPreview
+          open={!!selected}
+          onOpenChange={(open) => {
+            if (!open) setSelected(null);
+          }}
+          videoId={selected.entityId}
+        />
+      )}
     </div>
   );
 }
 
 function sortOptions(page: ExplorePage | undefined) {
   return page?.sort_options ?? [];
+}
+
+function hasValue(value: unknown): boolean {
+  return value !== undefined && value !== null && String(value) !== "";
+}
+
+function detailHref(
+  entity: ExplorerEntity,
+  row: Record<string, unknown>,
+): string | null {
+  if (entity === "video" && hasValue(row.video_id)) {
+    return `/videos/${row.video_id}`;
+  }
+  if (entity === "channel" && hasValue(row.channel_id)) {
+    return `/channels/${row.channel_id}`;
+  }
+  return null;
+}
+
+function commentThreadHref(row: Record<string, unknown>): string | null {
+  if (!hasValue(row.video_id) || !hasValue(row.comment_id)) return null;
+  return `/videos/${row.video_id}?tab=comments&thread=${row.comment_id}`;
 }
 
 const FILTER_OPERATORS = [

@@ -186,14 +186,14 @@ function Meta({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function RateTile({ label, value }: { label: string; value: { value: number | null } }) {
+function RateTile({ label, value }: { label: string; value?: { value: number | null } | null }) {
   return (
     <Card className="flex items-center justify-between p-4">
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </p>
       <p className="text-lg font-semibold tabular-nums">
-        {value.value === null ? "—" : `${(value.value * 100).toFixed(2)}%`}
+        {!value || value.value === null ? "—" : `${(value.value * 100).toFixed(2)}%`}
       </p>
     </Card>
   );

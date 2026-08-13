@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FlaskConical, Compass, Network, FolderOpen, ListOrdered, Scale, Database } from "lucide-react";
+import { FlaskConical, Compass, Network, FolderOpen, ListOrdered, Scale, Database, FolderKanban } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CommandPalette } from "@/components/features/command-palette";
 import { ResearchContextBar } from "@/components/features/research-context-bar";
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { href: "/network", label: "Network", icon: Network },
   { href: "/samples", label: "Samples", icon: Database },
   { href: "/datasets", label: "Datasets", icon: FolderOpen },
+  { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/runs", label: "Runs", icon: ListOrdered },
 ];
 

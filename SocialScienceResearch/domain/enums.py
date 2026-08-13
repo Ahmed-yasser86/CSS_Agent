@@ -96,6 +96,7 @@ class SamplingStrategy(StrEnum):
     TOP_ENGAGEMENT = "top_engagement"
     BOTTOM_ENGAGEMENT = "bottom_engagement"
     TOP_COMMENTS = "top_comments"
+    TOP_REPLIES = "top_replies"
     TOP_COMMENT_RATE = "top_comment_rate"
     TOP_LIKE_RATE = "top_like_rate"
     LONGEST = "longest"

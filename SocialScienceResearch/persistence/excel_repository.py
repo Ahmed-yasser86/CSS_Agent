@@ -28,6 +28,8 @@ from SocialScienceResearch.domain.models import (
     Video,
     VideoObservation,
 )
+from SocialScienceResearch.domain.dataset_models import Dataset, ProjectItem
+from SocialScienceResearch.domain.sample_models import Sample
 
 from .base import (
     ChannelRepository,
@@ -40,7 +42,10 @@ from .base import (
     VideoRepository,
 )
 from .author_repository import ExcelAuthorRepository
+from .dataset_repository import DatasetRepository
 from .excel_workbook import WorkbookStore
+from .project_item_repository import ProjectItemRepository
+from .sample_repository import SampleRepository
 from .serialization import headers_for, model_to_row, row_to_model
 
 M = TypeVar("M", bound=BaseModel)
@@ -183,6 +188,11 @@ class ExcelVideoRepository(_ExcelEntityRepository, VideoRepository):
             videos = [v for v in videos if v.channel_id == channel_id]
         return videos
 
+    def list_videos_by_run(self, run_id: str) -> list[Video]:
+        """Return videos first discovered in the given collection run."""
+        videos = self._list()  # type: ignore[return-value]
+        return [v for v in videos if v.first_observed_run_id == run_id]
+
     def save_video_observation(self, observation: VideoObservation) -> None:
         self._save_observation(observation)
 
@@ -234,6 +244,16 @@ class ExcelCommentRepository(_ExcelEntityRepository, CommentRepository):
 
     def list_replies(self, parent_comment_id: str) -> list[Comment]:
         return [c for c in self._list() if c.parent_comment_id == parent_comment_id]  # type: ignore[union-attr, misc]
+
+    def list_replies_by_ids(self, parent_comment_ids: list[str]) -> dict[str, list[Comment]]:
+        """Return direct replies for multiple parent comments in one scan."""
+        all_comments = self._list()  # type: ignore[return-value]
+        wanted = set(parent_comment_ids)
+        result: dict[str, list[Comment]] = {pid: [] for pid in parent_comment_ids}
+        for comment in all_comments:
+            if comment.parent_comment_id in wanted:
+                result[comment.parent_comment_id].append(comment)
+        return result
 
     def save_comment_observation(self, observation: CommentObservation) -> None:
         self._save_observation(observation)
@@ -417,11 +437,56 @@ class ExcelTranscriptRepository(_ExcelEntityRepository, TranscriptRepository):
         )
 
 
+class ExcelProjectItemRepository(ProjectItemRepository):
+    """Excel-backed project item repository."""
+
+    _SHEET = "project_items"
+    _MODEL = ProjectItem
+    _KEY = "item_id"
+
+    def __init__(self, store: WorkbookStore) -> None:
+        self._store = store
+        store.ensure_sheet(self._SHEET, headers_for(ProjectItem))
+
+    def save_item(self, item: ProjectItem) -> None:
+        self._store.upsert_row(
+            self._SHEET, self._KEY, headers_for(ProjectItem), model_to_row(item)
+        )
+
+    def get_item(self, item_id: str) -> ProjectItem | None:
+        row = self._store.find_row(self._SHEET, self._KEY, item_id)
+        if row is None or row.get("item_id") != item_id:
+            return None
+        return row_to_model(ProjectItem, row)  # type: ignore[return-value]
+
+    def list_items(self, project_id: str | None = None) -> list[ProjectItem]:
+        items = [
+            row_to_model(ProjectItem, r)  # type: ignore[return-value]
+            for r in self._store.read_rows(self._SHEET, key_field=self._KEY)
+        ]
+        if project_id:
+            items = [i for i in items if i.project_id == project_id]
+        return items
+
+    def list_items_by_project(self, project_id: str) -> list[ProjectItem]:
+        return self.list_items(project_id=project_id)
+
+    def update_item(self, item: ProjectItem) -> None:
+        self.save_item(item)
+
+    def delete_item(self, item_id: str) -> None:
+        from .dataset_repository import blank_row
+        blank_row(self._store, self._SHEET, self._KEY, item_id)
+
+
 @dataclass
 class ExcelRepositories(Repositories):
     """Container of all concrete Excel repositories sharing one store."""
 
     store: WorkbookStore
+    datasets: DatasetRepository
+    samples: SampleRepository
+    project_items: ProjectItemRepository
 
 
 def build_excel_repositories(
@@ -445,12 +510,16 @@ def build_excel_repositories(
     recommendations = ExcelRecommendationRepository(store)
     transcripts = ExcelTranscriptRepository(store, repo_settings.transcripts_dir)
     authors = ExcelAuthorRepository(store)
+    datasets = DatasetRepository(store)
+    samples = SampleRepository(store)
+    project_items = ExcelProjectItemRepository(store)
     # Ensure observation/error sheets exist up-front for a stable file layout.
     for sheet, model in (
         ("channel_observations", ChannelObservation),
         ("video_observations", VideoObservation),
         ("comment_observations", CommentObservation),
         ("collection_errors", CollectionError),
+        ("project_items", ProjectItem),
     ):
         store.ensure_sheet(sheet, headers_for(model))
     return ExcelRepositories(
@@ -461,5 +530,8 @@ def build_excel_repositories(
         recommendations=recommendations,
         transcripts=transcripts,
         authors=authors,
+        datasets=datasets,
+        samples=samples,
+        project_items=project_items,
         store=store,
     )

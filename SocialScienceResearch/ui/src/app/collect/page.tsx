@@ -19,9 +19,11 @@ export default function CollectPage() {
       </header>
       <CollectTargetForm />
       <p className="text-xs text-muted-foreground">
-        Known limitation: yt-dlp cannot reliably provide video recommendations.
-        Recommendation runs record an explicit unsupported error instead of
-        fabricating edges.
+        Recommendation runs observe each video’s “Up Next” rail through a
+        layered provider strategy (library fields, the INNERTUBE /next endpoint,
+        and raw watch-page dumps) and rank every edge by its position in the
+        feed. If every provider returns nothing, the run records an explicit
+        unsupported error instead of fabricating edges.
       </p>
     </div>
   );

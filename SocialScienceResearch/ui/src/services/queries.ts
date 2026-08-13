@@ -2,12 +2,14 @@
 
 import {
   keepPreviousData,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import type {
   CollectionSpec,
+  ExportRequest,
   ResearchEntity,
   ResearchQuery,
   RunType,
@@ -15,12 +17,38 @@ import type {
   VideoFilter,
 } from "@/lib/types";
 import * as api from "@/services/api";
+import {
+  listDatasets,
+  getDataset,
+  createDataset,
+  deleteDataset,
+  updateDataset,
+  combineDatasets,
+  listProjects,
+  getProject,
+  createProject,
+  updateProject,
+  deleteProject,
+  addDatasetToProject,
+  removeDatasetFromProject,
+  listProjectItems,
+  getProjectItem,
+  createProjectItem,
+  updateProjectItem,
+  deleteProjectItem,
+  addSamplesToItem,
+  removeSamplesFromItem,
+  addDatasetsToItem,
+  removeDatasetsFromItem,
+} from "@/services/datasets";
 
 export const queryKeys = {
   runs: (runType?: RunType) => ["runs", runType ?? "all"] as const,
   run: (runId: string) => ["runs", runId] as const,
   runErrors: (runId: string) => ["runs", runId, "errors"] as const,
+  runVideos: (runId: string) => ["runs", runId, "videos"] as const,
   channelOverview: (channelId: string) => ["channels", channelId, "overview"] as const,
+  channels: () => ["channels"] as const,
   channelVideos: (channelId: string, filter?: VideoFilter) =>
     ["channels", channelId, "videos", JSON.stringify(filter ?? {})] as const,
   channelVideoCount: (channelId: string) =>
@@ -29,6 +57,8 @@ export const queryKeys = {
   videoEngagement: (videoId: string) => ["videos", videoId, "engagement"] as const,
   commentPercentiles: (videoId: string) =>
     ["videos", videoId, "comments", "percentiles"] as const,
+  commentStats: (videoId: string) =>
+    ["videos", videoId, "comments", "stats"] as const,
   commentVelocity: (videoId: string, bucket: "day" | "hour") =>
     ["videos", videoId, "comments", "velocity", bucket] as const,
   videoComments: (videoId: string) => ["videos", videoId, "comments"] as const,
@@ -42,11 +72,19 @@ export const queryKeys = {
   job: (jobId: string) => ["jobs", jobId] as const,
   coverage: () => ["coverage"] as const,
   datasetSummary: () => ["dataset", "summary"] as const,
+  systemFolders: () => ["system", "folders"] as const,
   researchVariables: (entity?: ResearchEntity) =>
     ["research", "variables", entity ?? "all"] as const,
   researchOperators: () => ["research", "operators"] as const,
   search: (q: string, entity?: string) =>
     ["search", q, entity ?? "all"] as const,
+  datasets: () => ["datasets"] as const,
+  dataset: (datasetId: string) => ["datasets", datasetId] as const,
+  projects: () => ["projects"] as const,
+  project: (projectId: string) => ["projects", projectId] as const,
+  projectItems: (projectId: string) => ["project-items", projectId] as const,
+  projectItem: (projectId: string, itemId: string) =>
+    ["project-items", projectId, itemId] as const,
 };
 
 export function useRuns(runType?: RunType) {
@@ -69,6 +107,45 @@ export function useRunErrors(runId: string) {
     queryKey: queryKeys.runErrors(runId),
     queryFn: () => api.getRunErrors(runId),
     enabled: !!runId,
+  });
+}
+
+export function useRunVideos(runId: string) {
+  return useQuery({
+    queryKey: queryKeys.runVideos(runId),
+    queryFn: () => api.getRunVideos(runId),
+    enabled: !!runId,
+  });
+}
+
+export function useChannels() {
+  return useQuery({
+    queryKey: queryKeys.channels(),
+    queryFn: async () => {
+      const first = await api.getChannels();
+      let all = first.items;
+      let cursor = first.next_cursor;
+      while (cursor) {
+        const page = await api.getChannels(cursor);
+        all = all.concat(page.items);
+        cursor = page.next_cursor;
+      }
+      return all;
+    },
+  });
+}
+
+export function useUpdateRunName() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ runId, name }: { runId: string; name: string }) =>
+      api.updateRunName(runId, name),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.runs() });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.run(variables.runId),
+      });
+    },
   });
 }
 
@@ -120,10 +197,26 @@ export function useCommentPercentiles(videoId: string) {
   });
 }
 
+export function useCommentStats(videoId: string) {
+  return useQuery({
+    queryKey: queryKeys.commentStats(videoId),
+    queryFn: () => api.getCommentStats(videoId),
+    enabled: !!videoId,
+  });
+}
+
 export function useCommentVelocity(videoId: string, bucket: "day" | "hour") {
   return useQuery({
     queryKey: queryKeys.commentVelocity(videoId, bucket),
     queryFn: () => api.getCommentVelocity(videoId, bucket),
+    enabled: !!videoId,
+  });
+}
+
+export function useCommentThreads(videoId: string) {
+  return useQuery({
+    queryKey: ["videos", videoId, "comments", "threads"] as const,
+    queryFn: () => api.getCommentThreads(videoId),
     enabled: !!videoId,
   });
 }
@@ -231,6 +324,13 @@ export function useDatasetSummary() {
   });
 }
 
+export function useSystemFolders() {
+  return useQuery({
+    queryKey: queryKeys.systemFolders(),
+    queryFn: () => api.getSystemFolders(),
+  });
+}
+
 export function useSampleVideos(channelId: string) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -281,11 +381,313 @@ export function useResolveResearchQuery() {
   });
 }
 
+export function useExportData() {
+  return useMutation({
+    mutationFn: (request: ExportRequest) => api.exportData(request),
+  });
+}
+
 export function useGlobalSearch(q: string, entity?: string) {
   return useQuery({
     queryKey: queryKeys.search(q, entity),
     queryFn: () => api.searchGlobal(q, entity),
     enabled: q.trim().length > 0,
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useDatasetList() {
+  return useInfiniteQuery({
+    queryKey: queryKeys.datasets(),
+    queryFn: ({ pageParam }) => listDatasets(pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.has_more ? (lastPage.next_cursor ?? undefined) : undefined,
+  });
+}
+
+export function useDataset(datasetId: string) {
+  return useQuery({
+    queryKey: queryKeys.dataset(datasetId),
+    queryFn: () => getDataset(datasetId),
+    enabled: !!datasetId,
+  });
+}
+
+export function useCreateDataset() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: createDataset,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.datasets() });
+    },
+  });
+}
+
+export function useUpdateDataset() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ datasetId, patch }: { datasetId: string; patch: Parameters<typeof updateDataset>[1] }) =>
+      updateDataset(datasetId, patch),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.dataset(variables.datasetId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.datasets() });
+    },
+  });
+}
+
+export function useDeleteDataset() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (datasetId: string) => deleteDataset(datasetId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.datasets() });
+    },
+  });
+}
+
+export function useCombineDatasets() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: combineDatasets,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.datasets() });
+    },
+  });
+}
+
+export function useProjectList() {
+  return useInfiniteQuery({
+    queryKey: queryKeys.projects(),
+    queryFn: ({ pageParam }) => listProjects(pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) =>
+      lastPage.has_more ? (lastPage.next_cursor ?? undefined) : undefined,
+  });
+}
+
+export function useProject(projectId: string) {
+  return useQuery({
+    queryKey: queryKeys.project(projectId),
+    queryFn: () => getProject(projectId),
+    enabled: !!projectId,
+  });
+}
+
+export function useCreateProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: createProject,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+    },
+  });
+}
+
+export function useUpdateProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, patch }: { projectId: string; patch: Parameters<typeof updateProject>[1] }) =>
+      updateProject(projectId, patch),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.project(variables.projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+    },
+  });
+}
+
+export function useDeleteProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (projectId: string) => deleteProject(projectId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+    },
+  });
+}
+
+export function useAddDatasetToProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, datasetId }: { projectId: string; datasetId: string }) =>
+      addDatasetToProject(projectId, datasetId),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.project(variables.projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+    },
+  });
+}
+
+export function useRemoveDatasetFromProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, datasetId }: { projectId: string; datasetId: string }) =>
+      removeDatasetFromProject(projectId, datasetId),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.project(variables.projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+    },
+  });
+}
+
+export function useProjectItems(projectId: string) {
+  return useQuery({
+    queryKey: queryKeys.projectItems(projectId),
+    queryFn: () => listProjectItems(projectId),
+    enabled: !!projectId,
+  });
+}
+
+export function useProjectItem(projectId: string, itemId: string) {
+  return useQuery({
+    queryKey: queryKeys.projectItem(projectId, itemId),
+    queryFn: () => getProjectItem(projectId, itemId),
+    enabled: !!projectId && !!itemId,
+  });
+}
+
+export function useCreateProjectItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      body,
+    }: {
+      projectId: string;
+      body: Parameters<typeof createProjectItem>[1];
+    }) => createProjectItem(projectId, body),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.projectItems(variables.projectId),
+      });
+    },
+  });
+}
+
+export function useUpdateProjectItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      itemId,
+      patch,
+    }: {
+      projectId: string;
+      itemId: string;
+      patch: Parameters<typeof updateProjectItem>[2];
+    }) => updateProjectItem(projectId, itemId, patch),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.projectItems(variables.projectId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.projectItem(variables.projectId, variables.itemId),
+      });
+    },
+  });
+}
+
+export function useDeleteProjectItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, itemId }: { projectId: string; itemId: string }) =>
+      deleteProjectItem(projectId, itemId),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.projectItems(variables.projectId),
+      });
+    },
+  });
+}
+
+export function useAddSamplesToItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      itemId,
+      sampleIds,
+    }: {
+      projectId: string;
+      itemId: string;
+      sampleIds: string[];
+    }) => addSamplesToItem(projectId, itemId, sampleIds),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.projectItems(variables.projectId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.projectItem(variables.projectId, variables.itemId),
+      });
+    },
+  });
+}
+
+export function useRemoveSamplesFromItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      itemId,
+      sampleIds,
+    }: {
+      projectId: string;
+      itemId: string;
+      sampleIds: string[];
+    }) => removeSamplesFromItem(projectId, itemId, sampleIds),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.projectItems(variables.projectId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.projectItem(variables.projectId, variables.itemId),
+      });
+    },
+  });
+}
+
+export function useAddDatasetsToItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      itemId,
+      datasetIds,
+    }: {
+      projectId: string;
+      itemId: string;
+      datasetIds: string[];
+    }) => addDatasetsToItem(projectId, itemId, datasetIds),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.projectItems(variables.projectId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.projectItem(variables.projectId, variables.itemId),
+      });
+    },
+  });
+}
+
+export function useRemoveDatasetsFromItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      projectId,
+      itemId,
+      datasetIds,
+    }: {
+      projectId: string;
+      itemId: string;
+      datasetIds: string[];
+    }) => removeDatasetsFromItem(projectId, itemId, datasetIds),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.projectItems(variables.projectId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.projectItem(variables.projectId, variables.itemId),
+      });
+    },
   });
 }

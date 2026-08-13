@@ -79,3 +79,25 @@ def test_video_context_in_and_out(excel_repos) -> None:
     assert middle.out_degree == 2
     assert {e["source_video_id"] for e in middle.recommended_by} == {"v1"}
     assert middle.pagerank is not None
+
+
+def test_video_context_ranks_recommends_by_feed_position(excel_repos) -> None:
+    # Insert out of feed order to prove the service ranks, not the repository.
+    _edge(excel_repos, "v1", "last", run="run_1", position=5)
+    _edge(excel_repos, "v1", "first", run="run_1", position=0)
+    _edge(excel_repos, "v1", "middle", run="run_1", position=2)
+    _edge(excel_repos, "v1", "no_rank", run="run_1", position=None)
+    context = RecommendationGraphService(excel_repos).video_context("v1")
+    ids = [e["recommended_video_id"] for e in context.recommends]
+    assert ids == ["first", "middle", "last", "no_rank"]
+
+
+def test_video_context_ranks_recommended_by_feed_position(excel_repos) -> None:
+    # Two sources each recommend the target at different feed slots.
+    _edge(excel_repos, "s_late", "target", run="run_1", position=9)
+    _edge(excel_repos, "s_early", "target", run="run_1", position=0)
+    context = RecommendationGraphService(excel_repos).video_context("target")
+    assert [e["source_video_id"] for e in context.recommended_by] == [
+        "s_early",
+        "s_late",
+    ]

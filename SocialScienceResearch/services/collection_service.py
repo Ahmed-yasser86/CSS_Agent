@@ -21,7 +21,9 @@ interfaces - never on yt-dlp or Excel directly.
 
 from __future__ import annotations
 
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any, Protocol
 
@@ -30,6 +32,7 @@ from SocialScienceResearch.acquisition import (
     AcquisitionProvider,
     TranscriptUnsupportedError,
 )
+from SocialScienceResearch.acquisition.errors import LiveEventSkipError
 from SocialScienceResearch.acquisition.normalization import (
     normalize_channel,
     normalize_channel_observation,
@@ -232,6 +235,46 @@ def _as_datetime(value: Any) -> datetime | None:
     return None
 
 
+#: yt-dlp ``live_status`` values for which deep enrichment is skipped: live
+#: streams and upcoming premieres have no comment section until they air.
+_LIVE_NO_COMMENTS_STATUSES = ("is_upcoming", "is_live")
+
+_LIVE_SKIP_REASON = "live/upcoming video - no comments available"
+
+
+def _is_live_or_upcoming(raw: dict[str, Any]) -> bool:
+    """True when a video payload has no comment section yet."""
+    return raw.get("live_status") in _LIVE_NO_COMMENTS_STATUSES
+
+
+class _RateLimiter:
+    """Shared time-based throttle bounding the aggregate network request rate.
+
+    ``min_interval`` is the minimum wall-clock spacing between *consecutive*
+    network requests across all enrichment workers (``request_delay_seconds``).
+    A worker that arrives early blocks only until its slot is due; workers do
+    not sleep when the interval has already elapsed, so independent requests
+    overlap and the pacing never serializes the whole enrichment step.
+    """
+
+    def __init__(self, min_interval: float) -> None:
+        self._min_interval = min_interval
+        self._lock = threading.Lock()
+        self._next_slot = 0.0
+
+    def wait(self) -> None:
+        """Block until this worker may issue its next network request."""
+        if self._min_interval <= 0:
+            return
+        with self._lock:
+            now = time.monotonic()
+            slot = max(self._next_slot, now)
+            self._next_slot = slot + self._min_interval
+        delay = slot - now
+        if delay > 0:
+            time.sleep(delay)
+
+
 class CollectionService:
     """High-level orchestration of YouTube data acquisition workflows."""
 
@@ -321,7 +364,10 @@ class CollectionService:
                     run, EntityType.CHANNEL, None, exc.error_type, str(exc)
                 )
             )
-            self._finish_run(run, CollectionStatus.FAILED, errors, discovered=0)
+            self._finish_run(
+                run, CollectionStatus.FAILED, errors,
+                discovered=0, succeeded=0, entities_existing=0, comments_collected=0, failed=1
+            )
             return self._result(run, errors)
 
         self._report(
@@ -342,7 +388,10 @@ class CollectionService:
                     "Could not resolve a channel id from the extraction result.",
                 )
             )
-            self._finish_run(run, CollectionStatus.FAILED, errors, discovered=0)
+            self._finish_run(
+                run, CollectionStatus.FAILED, errors,
+                discovered=0, succeeded=0, entities_existing=0, comments_collected=0, failed=1
+            )
             return self._result(run, errors)
 
         run.target_channel_id = channel.channel_id
@@ -366,6 +415,8 @@ class CollectionService:
             errors,
             discovered=len(extract.videos),
             succeeded=created_videos + existing_videos,
+            entities_existing=existing_videos,
+            comments_collected=comment_total,
             failed=len(errors),
             notes=(
                 [f"{len(skipped)} video(s) skipped deep enrichment"]
@@ -397,13 +448,17 @@ class CollectionService:
         Returns ``(created, existing, comments_collected, skipped)`` where
         ``skipped`` records videos that were *not* deep-enriched (with the
         reason) so enrichment skips are observable, never silent.
+
+        Deep enrichment is executed concurrently (``enrichment_concurrency``
+        workers): workers only perform the slow network work, persistence
+        happens on the main thread so the Excel store stays single-threaded.
         """
         created = 0
         existing = 0
         comment_total = 0
         skipped: list[dict[str, Any]] = []
         enrich = bool(effective["enrich_video_stats"])
-        max_comments = effective["max_comments_per_video"]
+        concurrency = max(1, self._settings.scraper.enrichment_concurrency)
 
         # Researcher video criteria + per-channel quota are applied *before*
         # persistence so the run collects exactly the researcher's sample.
@@ -425,6 +480,9 @@ class CollectionService:
                 ),
             )
 
+        # Phase 1 (sequential): persist every discovered video and decide which
+        # videos qualify for deep enrichment, exactly as before.
+        tasks: list[dict[str, Any]] = []
         for index, raw in enumerate(kept_raws):
             video = normalize_video(raw, run.run_id)
             if video is None:
@@ -445,55 +503,164 @@ class CollectionService:
                 message=f"video {video.video_id} persisted",
             )
 
-            if enrich:
-                can_enrich, reason = self._can_enrich(
-                    index, created + existing, effective
-                )
-                if can_enrich:
-                    try:
-                        info = self._provider.extract_video(video.url)
-                        obs = normalize_video_observation(
-                            info, run.run_id, video.video_id
-                        )
-                        if obs is not None:
-                            self._repos.videos.save_video_observation(obs)
-                        if effective["collect_comments"]:
-                            comment_total += self._persist_comments(
-                                run,
-                                info.get("comments") or [],
-                                video.video_id,
-                                errors,
-                                effective,
-                                reporter,
-                            )
-                        if effective["collect_transcripts"]:
-                            self._collect_transcript(
-                                run, video, errors, effective, reporter
-                            )
-                        if self._settings.scraper.request_delay_seconds:
-                            time.sleep(self._settings.scraper.request_delay_seconds)
-                    except AcquisitionError as exc:
-                        err = self._record_error(
-                            run, EntityType.VIDEO, video.video_id, exc.error_type, str(exc)
-                        )
-                        errors.append(err)
-                else:
-                    # Enrichment was requested but bounded by quota: record why
-                    # this video was skipped so it is observable on the result.
-                    skipped.append(
-                        {"video_id": video.video_id, "reason": reason}
-                    )
-                    # Persist what the flat entry actually provides (may be None).
-                    obs = normalize_video_observation(raw, run.run_id, video.video_id)
-                    if obs is not None:
-                        self._repos.videos.save_video_observation(obs)
+            if not enrich:
+                self._persist_flat_observation(raw, run.run_id, video.video_id)
+                continue
+            can_enrich, reason = self._can_enrich(
+                index, created + existing, effective
+            )
+            if can_enrich:
+                tasks.append({"video": video, "raw": raw})
             else:
-                # Persist what the flat entry actually provides (may be None).
-                obs = normalize_video_observation(raw, run.run_id, video.video_id)
-                if obs is not None:
-                    self._repos.videos.save_video_observation(obs)
+                # Enrichment was requested but bounded by quota: record why
+                # this video was skipped so it is observable on the result.
+                skipped.append({"video_id": video.video_id, "reason": reason})
+                self._persist_flat_observation(raw, run.run_id, video.video_id)
+
+        # Phase 2 (concurrent): network-only deep enrichment; the main thread
+        # persists each result as its future completes (order is not
+        # deterministic, but counters stay correct).
+        if tasks:
+            throttle = _RateLimiter(self._settings.scraper.request_delay_seconds)
+            comment_total, skipped = self._enrich_and_persist(
+                run,
+                tasks,
+                errors,
+                effective,
+                reporter,
+                comment_total,
+                skipped,
+                throttle,
+                concurrency,
+            )
 
         return created, existing, comment_total, skipped
+
+    def _persist_flat_observation(
+        self, raw: dict[str, Any], run_id: str, video_id: str
+    ) -> None:
+        """Persist whatever statistics the flat/partial payload provides."""
+        obs = normalize_video_observation(raw, run_id, video_id)
+        if obs is not None:
+            self._repos.videos.save_video_observation(obs)
+
+    def _enrich_video_task(
+        self,
+        video,
+        raw: dict[str, Any],
+        effective: dict[str, Any],
+        throttle: _RateLimiter,
+    ) -> dict[str, Any]:
+        """Network phase of deep enrichment for one video (worker thread).
+
+        Returns a result dict consumed by the main thread for persistence.
+        Failures are captured in the dict as typed errors, never raised, so a
+        single worker failure cannot abort the other videos' enrichment.
+        """
+        lang = self._settings.scraper.transcript_lang
+        result: dict[str, Any] = {
+            "video_id": video.video_id,
+            "video": video,
+            "raw": raw,
+            "info": None,
+            "skip_reason": None,
+            "error": None,
+            "transcript": None,
+            "transcript_error": None,
+        }
+        try:
+            throttle.wait()
+            info = self._provider.extract_video(video.url)
+        except LiveEventSkipError:
+            result["skip_reason"] = _LIVE_SKIP_REASON
+            return result
+        except AcquisitionError as exc:
+            result["error"] = exc
+            return result
+        if _is_live_or_upcoming(info):
+            # The stream has no comment section yet: record the skip and keep
+            # the metadata that *was* extracted for persistence.
+            result["skip_reason"] = _LIVE_SKIP_REASON
+            result["info"] = info
+            return result
+        result["info"] = info
+        if effective["collect_transcripts"]:
+            try:
+                throttle.wait()
+                result["transcript"] = self._provider.extract_transcript(
+                    video.url, lang=lang
+                )
+            except TranscriptUnsupportedError as exc:
+                result["transcript_error"] = exc
+            except AcquisitionError as exc:
+                result["transcript_error"] = exc
+        return result
+
+    def _enrich_and_persist(
+        self,
+        run: CollectionRun,
+        tasks: list[dict[str, Any]],
+        errors: list[CollectionError],
+        effective: dict[str, Any],
+        reporter: ProgressReporter | None,
+        comment_total: int,
+        skipped: list[dict[str, Any]],
+        throttle: _RateLimiter,
+        concurrency: int,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """Deep-enrich ``tasks`` concurrently and persist every outcome.
+
+        Network work runs in the worker pool; all persistence, error recording
+        and counter accounting happen on the main thread. Returns the updated
+        ``(comment_total, skipped)``.
+        """
+        lang = self._settings.scraper.transcript_lang
+        with ThreadPoolExecutor(
+            max_workers=concurrency, thread_name_prefix="enrich"
+        ) as pool:
+            futures = {
+                pool.submit(self._enrich_video_task, t["video"], t["raw"], effective, throttle): t
+                for t in tasks
+            }
+            for future in as_completed(futures):
+                result = future.result()
+                video = result["video"]
+                if result["error"] is not None:
+                    exc = result["error"]
+                    errors.append(
+                        self._record_error(
+                            run, EntityType.VIDEO, video.video_id, exc.error_type, str(exc)
+                        )
+                    )
+                    continue
+                if result["skip_reason"] is not None:
+                    skipped.append(
+                        {"video_id": video.video_id, "reason": result["skip_reason"]}
+                    )
+                    self._persist_flat_observation(
+                        result["info"] or result["raw"], run.run_id, video.video_id
+                    )
+                    continue
+                info = result["info"]
+                self._persist_flat_observation(info, run.run_id, video.video_id)
+                if effective["collect_comments"]:
+                    comment_total += self._persist_comments(
+                        run,
+                        info.get("comments") or [],
+                        video.video_id,
+                        errors,
+                        effective,
+                        reporter,
+                    )
+                if result["transcript_error"] is not None:
+                    self._persist_transcript_error(
+                        run, video, result["transcript_error"], errors, lang
+                    )
+                elif result["transcript"] is not None:
+                    self._persist_transcript_extract(
+                        run, video, result["transcript"], reporter, lang=lang
+                    )
+        return comment_total, skipped
 
     def _can_enrich(
         self, index: int, collected: int, effective: dict[str, Any]
@@ -534,7 +701,10 @@ class CollectionService:
                     run, EntityType.VIDEO, None, exc.error_type, str(exc)
                 )
             )
-            self._finish_run(run, CollectionStatus.FAILED, errors, discovered=1)
+            self._finish_run(
+                run, CollectionStatus.FAILED, errors,
+                discovered=1, succeeded=0, entities_existing=0, comments_collected=0, failed=1
+            )
             return self._result(run, errors)
 
         self._report(
@@ -555,7 +725,10 @@ class CollectionService:
                     "Could not resolve a video id from the extraction result.",
                 )
             )
-            self._finish_run(run, CollectionStatus.FAILED, errors, discovered=1)
+            self._finish_run(
+                run, CollectionStatus.FAILED, errors,
+                discovered=1, succeeded=0, entities_existing=0, comments_collected=0, failed=1
+            )
             return self._result(run, errors)
 
         run.target_video_id = video.video_id
@@ -596,6 +769,8 @@ class CollectionService:
             errors,
             discovered=1,
             succeeded=1,
+            entities_existing=0,
+            comments_collected=comment_total,
             failed=len(errors),
         )
         log_success(
@@ -704,39 +879,62 @@ class CollectionService:
         lang = self._settings.scraper.transcript_lang
         try:
             extract = self._provider.extract_transcript(video.url, lang=lang)
-        except TranscriptUnsupportedError as exc:
-            err = self._record_error(
-                run,
-                EntityType.VIDEO,
-                video.video_id,
-                exc.error_type,
-                str(exc),
-                retryable=False,
-            )
-            errors.append(err)
+        except LiveEventSkipError:
+            # The stream has not aired, so no captions exist yet: that is a
+            # missing availability outcome, never an error.
             self._save_transcript_record(
                 run,
                 video.video_id,
                 lang,
-                TranscriptStatus.UNSUPPORTED,
-                str(exc),
+                TranscriptStatus.MISSING,
+                "live/upcoming video - no captions until the stream airs",
             )
-            logger.warning("video %s: %s", video.video_id, str(exc))
+            return
+        except TranscriptUnsupportedError as exc:
+            self._persist_transcript_error(run, video, exc, errors, lang, retryable=False)
             return
         except AcquisitionError as exc:
-            err = self._record_error(
-                run, EntityType.VIDEO, video.video_id, exc.error_type, str(exc)
-            )
-            errors.append(err)
-            self._save_transcript_record(
-                run,
-                video.video_id,
-                lang,
-                TranscriptStatus.UNSUPPORTED,
-                str(exc),
-            )
+            self._persist_transcript_error(run, video, exc, errors, lang)
             return
+        self._persist_transcript_extract(run, video, extract, reporter, lang=lang)
 
+    def _persist_transcript_error(
+        self,
+        run: CollectionRun,
+        video,
+        exc: AcquisitionError,
+        errors: list[CollectionError],
+        lang: str | None,
+        *,
+        retryable: bool | None = None,
+    ) -> None:
+        """Record a transcript acquisition failure as an auditable error."""
+        if retryable is None and isinstance(exc, TranscriptUnsupportedError):
+            retryable = False
+        err = self._record_error(
+            run, EntityType.VIDEO, video.video_id, exc.error_type, str(exc), retryable=retryable
+        )
+        errors.append(err)
+        self._save_transcript_record(
+            run,
+            video.video_id,
+            lang,
+            TranscriptStatus.UNSUPPORTED,
+            str(exc),
+        )
+        logger.warning("video %s: %s", video.video_id, str(exc))
+
+    def _persist_transcript_extract(
+        self,
+        run: CollectionRun,
+        video,
+        extract,
+        reporter: ProgressReporter | None,
+        *,
+        lang: str | None = None,
+    ) -> None:
+        """Persist a successfully-extracted transcript outcome."""
+        lang = lang or self._settings.scraper.transcript_lang
         if extract.status == TranscriptStatus.AVAILABLE:
             abs_path = self._repos.transcripts.write_artifact(
                 video.video_id, extract.content
@@ -836,13 +1034,17 @@ class CollectionService:
         discovered: int,
         succeeded: int = 0,
         failed: int = 0,
+        entities_existing: int = 0,
+        comments_collected: int = 0,
         notes: list[str] | None = None,
     ) -> None:
         run.status = status
         run.finished_at = utcnow()
         run.entities_discovered = discovered
         run.entities_succeeded = succeeded
+        run.entities_existing = entities_existing
         run.entities_failed = failed
+        run.comments_collected = comments_collected
         error_count = len(self._repos.runs.list_errors(run.run_id)) or len(errors)
         base_notes = [f"{error_count} error(s) recorded"] if error_count else []
         run.notes = base_notes + list(notes or [])
@@ -880,6 +1082,7 @@ class CollectionService:
         collection = self._settings.collection
         return {
             "collect_comments": collection.collect_comments,
+            "scrape_all_comments": None,
             "max_comments_per_video": collection.max_comments_per_video,
             "extract_flat": collection.extract_flat,
             "enrich_video_stats": collection.enrich_video_stats,

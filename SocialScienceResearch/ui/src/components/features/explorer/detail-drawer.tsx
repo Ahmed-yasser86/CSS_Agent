@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { GitBranch } from "lucide-react";
 import {
   Drawer,
   DrawerContent,
@@ -7,7 +9,9 @@ import {
   DrawerTitle,
   DrawerDescription,
   DrawerBody,
+  DrawerFooter,
 } from "@/components/ui/drawer";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useRawRecord } from "@/services/explorer";
 import { ProvenancePanel } from "@/components/features/explorer/provenance-panel";
@@ -30,6 +34,13 @@ export function DetailDrawer({
   row: Record<string, unknown>;
   columns: ExplorerColumn[];
 }) {
+  const has = (value: unknown) =>
+    value !== undefined && value !== null && String(value) !== "";
+  const threadHref =
+    entity === "comment" && has(row.video_id) && has(row.comment_id)
+      ? `/videos/${row.video_id}?tab=comments&thread=${row.comment_id}`
+      : null;
+
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent side="right" className="w-full max-w-xl">
@@ -80,6 +91,19 @@ export function DetailDrawer({
             </TabsContent>
           </Tabs>
         </DrawerBody>
+        {threadHref ? (
+          <DrawerFooter>
+            <Button
+              render={<Link href={threadHref} />}
+              nativeButton={false}
+              variant="outline"
+              size="sm"
+            >
+              <GitBranch className="size-3.5" aria-hidden />
+              View reply tree
+            </Button>
+          </DrawerFooter>
+        ) : null}
       </DrawerContent>
     </Drawer>
   );

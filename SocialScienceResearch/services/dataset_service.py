@@ -33,6 +33,7 @@ from SocialScienceResearch.domain.dataset_models import (
     ColumnCoverage,
     Dataset,
     DatasetQualityReport,
+    UpdateProjectRequest,
 )
 from SocialScienceResearch.domain.query import (
     QueryContext,
@@ -80,19 +81,56 @@ class DatasetService:
         description: str | None = None,
         entity_type: str = "video",
         include_raw: bool = False,
+        run_ids: list[str] | None = None,
+        channel_ids: list[str] | None = None,
+        video_ids: list[str] | None = None,
+        member_ids: list[str] | None = None,
+        criteria: dict | None = None,
+        variable_selection: list[str] | None = None,
     ) -> Dataset:
-        """Snapshot the whole ``entity_type`` population as a dataset."""
+        """Snapshot the whole ``entity_type`` population as a dataset.
+
+        When ``channel_ids`` or ``video_ids`` are provided, the population is
+        scoped to those ids. ``member_ids`` further restricts to the exact
+        entity ids supplied (used to materialize a sampling result into a
+        dataset). ``criteria`` (a QueryGroup dict) can further filter
+        the rows. ``variable_selection`` overrides the default column set.
+        ``run_ids`` scoping is not yet implemented (rows lack first_observed_run_id).
+        """
         entity = self._entity(entity_type)
         rows = self._query.resolve_latest_rows(entity)
+
+        if channel_ids:
+            rows = [r for r in rows if r.get("channel_id") in channel_ids]
+        if video_ids:
+            rows = [r for r in rows if r.get("video_id") in video_ids]
+        if member_ids:
+            id_field = _ID_FIELD[entity]
+            member_set = set(member_ids)
+            rows = [r for r in rows if r.get(id_field) in member_set]
+        if criteria:
+            root = QueryGroup.model_validate(criteria)
+            rows = evaluate_query(entity, root, rows)
+        if variable_selection is not None:
+            columns = variable_selection
+        else:
+            columns = None
+
         return self._register(
             name=name,
             description=description,
             entity=entity,
             rows=rows,
-            columns=None,
+            columns=columns,
             project_id=None,
             query_hash=None,
             include_raw=include_raw,
+            run_ids=run_ids or [],
+            channel_ids=channel_ids or [],
+            video_ids=video_ids or [],
+            member_ids=member_ids or [],
+            criteria=criteria,
+            variable_selection=variable_selection or [],
         )
 
     def create_from_project(
@@ -143,6 +181,12 @@ class DatasetService:
             project_id=project_id,
             query_hash=query_hash,
             include_raw=include_raw,
+            run_ids=[],
+            channel_ids=[],
+            video_ids=[],
+            member_ids=[],
+            criteria=None,
+            variable_selection=project.variable_selection or [],
         )
 
     # ------------------------------------------------------------------
@@ -269,6 +313,12 @@ class DatasetService:
         project_id: str | None,
         query_hash: str | None,
         include_raw: bool,
+        run_ids: list[str],
+        channel_ids: list[str],
+        video_ids: list[str],
+        member_ids: list[str],
+        criteria: dict | None,
+        variable_selection: list[str],
     ) -> Dataset:
         id_field = _ID_FIELD[entity]
         if columns is None:
@@ -301,6 +351,13 @@ class DatasetService:
                 "query_hash": query_hash,
                 "row_count": len(members),
                 "variable_selection": columns,
+                "scope": {
+                    "run_ids": run_ids,
+                    "channel_ids": channel_ids,
+                    "video_ids": video_ids,
+                    "member_ids": member_ids,
+                },
+                "criteria": criteria,
             },
             member_count=len(members),
             overflow=chunks > 1,

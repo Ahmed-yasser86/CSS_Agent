@@ -346,7 +346,18 @@ class QueryService:
                     "observed_at": edge.observed_at,
                 }
             )
-        return rows
+        # Feed-rank order: grouped by source, then ascending rail position
+        # (unknown positions last) so the query/explorer surface reflects the
+        # observed "Up Next" order.
+        return sorted(
+            rows,
+            key=lambda row: (
+                row["source_video_id"],
+                row["position"] is None,
+                row["position"] if row["position"] is not None else 0,
+                row["recommended_video_id"],
+            ),
+        )
 
     def _author_rows(self) -> list[dict[str, Any]]:
         profiles = self._repos.authors.list_authors()

@@ -18,12 +18,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Query, Request
 
 from SocialScienceResearch.api.routers.common import get_service, paginated
+from SocialScienceResearch.api.schemas import CommentTreePayload
 from SocialScienceResearch.services.comment_analytics_service import (
     CommentAnalyticsService,
     ParticipationAnalytics,
     ReplyMetrics,
     VelocityDecay,
 )
+from SocialScienceResearch.persistence.base import Repositories
 from SocialScienceResearch.services.longitudinal_service import (
     ChannelHistoryPoint,
     LongitudinalService,
@@ -79,6 +81,17 @@ def participation_analytics(video_id: str, request: Request):
 def reply_analytics(video_id: str, request: Request):
     """Reply rate and thread-size distribution for a video's comments."""
     return _comment_analytics(request).reply_metrics(video_id)
+
+
+@router.get(
+    "/videos/{video_id}/comments/{comment_id}/tree",
+    tags=["analytics"],
+    response_model=CommentTreePayload,
+)
+def comment_tree(video_id: str, comment_id: str, request: Request):
+    """Full comment tree with all nested replies for a root comment."""
+    repos: Repositories = request.app.state.services["repos"]
+    return _build_comment_tree(repos, video_id, comment_id)
 
 
 @router.get(
@@ -141,3 +154,62 @@ def run_delta(request: Request, from_run: str = Query(...), to_run: str = Query(
 def single_run_deltas(run_id: str, request: Request):
     """Diff one run against the previous run of the same type."""
     return _longitudinal(request).run_entity_deltas(run_id)
+
+
+# ----------------------------------------------------------------------
+# Comment tree helper
+# ----------------------------------------------------------------------
+
+
+def _build_comment_tree(repos: Repositories, video_id: str, root_comment_id: str) -> CommentTreePayload:
+    """Build a full comment tree with all nested replies for a root comment."""
+    # Get the root comment
+    root_comment = repos.comments.get_comment(root_comment_id)
+    if root_comment is None or root_comment.video_id != video_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Comment {root_comment_id} not found in video {video_id}")
+
+    # Get latest observations for the root comment
+    latest_obs = repos.comments.get_latest_comment_observations([root_comment_id])
+    root_obs = latest_obs.get(root_comment_id)
+
+    def enrich_comment(comment):
+        payload = comment.model_dump()
+        obs = latest_obs.get(comment.comment_id)
+        if obs:
+            payload["like_count"] = obs.like_count
+            payload["reply_count"] = obs.reply_count
+            payload["is_removed"] = obs.is_removed
+        return payload
+
+    def build_tree(comment_id: str, depth: int = 0) -> CommentTreePayload:
+        comment = repos.comments.get_comment(comment_id)
+        if comment is None:
+            return None
+
+        enriched = enrich_comment(comment)
+        replies = repos.comments.list_replies(comment_id)
+
+        # Get observations for all replies in one batch
+        reply_ids = [r.comment_id for r in replies]
+        reply_obs = repos.comments.get_latest_comment_observations(reply_ids)
+
+        # Update latest_obs for children
+        for rid, obs in reply_obs.items():
+            latest_obs[rid] = obs
+
+        children = []
+        for reply in replies:
+            child_tree = build_tree(reply.comment_id, depth + 1)
+            if child_tree:
+                children.append(child_tree)
+
+        return CommentTreePayload(
+            comment=enriched,
+            replies=children,
+            total_replies=len(replies),
+            max_depth=depth if not children else max(c.max_depth for c in children) + 1,
+        )
+
+    tree = build_tree(root_comment_id)
+    return tree

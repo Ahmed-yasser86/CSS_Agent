@@ -1,11 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Filter, X } from "lucide-react";
-import type { Video, VideoFilter } from "@/lib/types";
-import { useChannelVideos, useChannelVideoCount } from "@/services/queries";
+import { Filter, X, Loader2, Play } from "lucide-react";
+import type { Video, VideoFilter, CollectionSpec, CollectJobResult, Job } from "@/lib/types";
+import {
+  useChannelVideos,
+  useChannelVideoCount,
+  useSubmitCollect,
+  useJob,
+  useCancelJob,
+} from "@/services/queries";
+import { getJobResult } from "@/services/api";
 import { DataTable, type Column } from "@/components/features/data-table";
 import {
   LoadingState,
@@ -16,6 +23,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { Card } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -65,6 +74,43 @@ export function VideoCorpusBrowser({
 
   const videosQuery = useChannelVideos(channelId, filter);
   const countQuery = useChannelVideoCount(channelId);
+  const submit = useSubmitCollect();
+  const cancel = useCancelJob();
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [result, setResult] = useState<CollectJobResult | null>(null);
+  const jobQuery = useJob(jobId);
+  const job = jobQuery.data;
+
+  const running = submit.isPending || job?.status === "pending" || job?.status === "running";
+  const finished = job?.status === "succeeded" || job?.status === "failed" || job?.status === "cancelled";
+
+  useEffect(() => {
+    if (job?.status !== "succeeded" || result) return;
+    getJobResult(job.job_id)
+      .then(setResult)
+      .catch(() => setResult(null));
+  }, [job, result]);
+
+  const filteredVideos = videosQuery.data ?? [];
+
+  function collectFiltered() {
+    if (filteredVideos.length === 0 || running) return;
+    setResult(null);
+    const spec: CollectionSpec = {
+      targets: filteredVideos.map((v) => ({
+        kind: "video",
+        url: v.url || `https://www.youtube.com/watch?v=${v.video_id}`,
+      })),
+    };
+    submit.mutate(spec, {
+      onSuccess: (data) => setJobId(data.job_id),
+    });
+  }
+
+  function cancelRun() {
+    if (!jobId) return;
+    cancel.mutate(jobId);
+  }
 
   function apply(next: VideoFilter) {
     setFilter(next);
@@ -159,6 +205,22 @@ export function VideoCorpusBrowser({
             </span>
           ) : null}
         </div>
+      ),
+    },
+    {
+      key: "comment_count",
+      header: "Comments",
+      sortable: true,
+      sortValue: (v) => v.comment_count ?? -1,
+      cell: (v) => (
+        <Link
+          href={`/videos/${v.video_id}?tab=comments`}
+          className="font-mono tabular-nums text-primary underline-offset-2 hover:underline"
+        >
+          {v.comment_count !== null && v.comment_count !== undefined
+            ? formatNumber(v.comment_count)
+            : "—"}
+        </Link>
       ),
     },
   ];
@@ -330,13 +392,38 @@ export function VideoCorpusBrowser({
       </aside>
 
       <section aria-label="Video corpus">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-medium">Corpus</h2>
-          <p className="text-xs text-muted-foreground">
-            {countQuery.isSuccess ? formatNumber(activeCount) : "…"} video(s)
-            in channel · {videosQuery.isSuccess ? formatNumber(videosQuery.data.length) : "…"} matching
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs text-muted-foreground">
+              {countQuery.isSuccess ? formatNumber(activeCount) : "…"} video(s)
+              in channel · {videosQuery.isSuccess ? formatNumber(filteredVideos.length) : "…"} matching
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={collectFiltered}
+              disabled={running || filteredVideos.length === 0}
+              title={
+                filteredVideos.length > 0
+                  ? `Collect observations for the ${filteredVideos.length} video(s) currently matching the filters`
+                  : "No videos match the current filters"
+              }
+            >
+              {running ? (
+                <Loader2 className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <Play className="size-3.5" aria-hidden />
+              )}
+              Collect observations
+            </Button>
+          </div>
         </div>
+
+        {running ? <CollectProgressCard job={job} onCancel={cancelRun} cancelling={cancel.isPending} /> : null}
+
+        {finished && result ? <CollectResultSummary result={result} /> : null}
 
         {videosQuery.isLoading ? (
           <LoadingState label="Loading corpus…" />
@@ -365,5 +452,88 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <Label className="text-xs text-muted-foreground">{label}</Label>
       {children}
     </div>
+  );
+}
+
+function CollectProgressCard({
+  job,
+  onCancel,
+  cancelling,
+}: {
+  job: Job | undefined;
+  onCancel: () => void;
+  cancelling: boolean;
+}) {
+  const progress = job?.progress;
+  const succeeded = progress?.succeeded ?? 0;
+  const failed = progress?.failed ?? 0;
+  const discovered = progress?.discovered ?? 0;
+  const pct = discovered > 0 ? Math.round(((succeeded + failed) / discovered) * 100) : 0;
+
+  return (
+    <Card className="space-y-3 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm">
+          <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden />
+          <span className="font-medium capitalize">{progress?.stage ?? "running"}</span>
+          <span className="font-mono text-xs text-muted-foreground">{job?.job_id}</span>
+        </div>
+        <Button variant="outline" size="sm" onClick={onCancel} disabled={cancelling}>
+          Cancel
+        </Button>
+      </div>
+      {discovered > 0 ? (
+        <div className="space-y-1">
+          <Progress value={pct} />
+          <p className="text-xs text-muted-foreground">
+            {formatNumber(succeeded)} succeeded, {formatNumber(failed)} failed of{" "}
+            {formatNumber(discovered)} discovered
+          </p>
+        </div>
+      ) : null}
+      {progress?.message ? (
+        <p className="text-xs text-muted-foreground">{progress.message}</p>
+      ) : null}
+    </Card>
+  );
+}
+
+function CollectResultSummary({ result }: { result: CollectJobResult }) {
+  const succeeded = result.results.filter((r) => r.status === "success" || r.status === "partial");
+  const comments = result.results.reduce((sum, r) => sum + (r.comments_collected ?? 0), 0);
+  return (
+    <Card className="space-y-3 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm">
+          <Play className="size-4 text-emerald-500" aria-hidden />
+          <span className="font-medium">
+            {formatNumber(succeeded.length)} of {formatNumber(result.results.length)} video(s) collected
+          </span>
+        </div>
+        <Button
+          render={<Link href="/runs" />}
+          nativeButton={false}
+          variant="outline"
+          size="sm"
+        >
+          View runs
+        </Button>
+      </div>
+      {comments > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {formatNumber(comments)} comment(s) collected in total.
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          No comments were collected. Observations for views/likes are still recorded per video.
+        </p>
+      )}
+      {result.results.some((r) => r.errors.length > 0) ? (
+        <p className="text-xs text-destructive">
+          {formatNumber(result.results.reduce((sum, r) => sum + r.errors.length, 0))} error(s)
+          recorded across the run(s).
+        </p>
+      ) : null}
+    </Card>
   );
 }

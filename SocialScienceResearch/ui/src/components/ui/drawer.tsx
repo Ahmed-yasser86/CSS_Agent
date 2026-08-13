@@ -79,34 +79,36 @@ function DrawerContent({
   return (
     <DrawerPortal>
       <DrawerOverlay />
-      <DrawerPrimitive.Popup
-        data-slot="drawer-content"
-        className={cn(
-          "fixed z-50 flex flex-col overflow-hidden bg-popover text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
-          sideClasses.position,
-          sideClasses.slideIn,
-          sideClasses.slideOut,
-          className
-        )}
-        {...props}
-      >
-        {children}
-        {showCloseButton && (
-          <DrawerPrimitive.Close
-            data-slot="drawer-close"
-            render={
-              <Button
-                variant="ghost"
-                className="absolute top-2 right-2"
-                size="icon-sm"
-              />
-            }
-          >
-            <XIcon />
-            <span className="sr-only">Close</span>
-          </DrawerPrimitive.Close>
-        )}
-      </DrawerPrimitive.Popup>
+      <DrawerPrimitive.Viewport>
+        <DrawerPrimitive.Popup
+          data-slot="drawer-content"
+          className={cn(
+            "fixed z-50 flex flex-col overflow-hidden bg-popover text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+            sideClasses.position,
+            sideClasses.slideIn,
+            sideClasses.slideOut,
+            className
+          )}
+          {...props}
+        >
+          {children}
+          {showCloseButton && (
+            <DrawerPrimitive.Close
+              data-slot="drawer-close"
+              render={
+                <Button
+                  variant="ghost"
+                  className="absolute top-2 right-2"
+                  size="icon-sm"
+                />
+              }
+            >
+              <XIcon />
+              <span className="sr-only">Close</span>
+            </DrawerPrimitive.Close>
+          )}
+        </DrawerPrimitive.Popup>
+      </DrawerPrimitive.Viewport>
     </DrawerPortal>
   )
 }

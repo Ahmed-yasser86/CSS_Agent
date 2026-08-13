@@ -1,0 +1,45 @@
+- generic [active] [ref=f6e1]:
+  - generic [ref=f6e2]:
+    - banner [ref=f6e3]:
+      - generic [ref=f6e4]:
+        - link "Social Science Research" [ref=f6e5] [cursor=pointer]:
+          - /url: /
+        - navigation "Primary" [ref=f6e10]:
+          - link "Workspace" [ref=f6e11] [cursor=pointer]:
+            - /url: /
+          - link "Collect" [ref=f6e15] [cursor=pointer]:
+            - /url: /collect
+          - link "Explorer" [ref=f6e20] [cursor=pointer]:
+            - /url: /explore
+          - link "Network" [ref=f6e26] [cursor=pointer]:
+            - /url: /network
+          - link "Samples" [ref=f6e33] [cursor=pointer]:
+            - /url: /samples
+          - link "Datasets" [ref=f6e39] [cursor=pointer]:
+            - /url: /datasets
+          - link "Projects" [ref=f6e43] [cursor=pointer]:
+            - /url: /projects
+          - link "Runs" [ref=f6e47] [cursor=pointer]:
+            - /url: /runs
+        - generic [ref=f6e52]:
+          - button "Switch to dark mode" [ref=f6e53]
+          - button "Jobs tray" [ref=f6e56]:
+            - generic [ref=f6e57]: Jobs
+          - button "Search… Ctrl K" [ref=f6e58]:
+            - generic [ref=f6e62]: Search…
+            - generic:
+              - text: Ctrl
+              - generic: K
+          - generic [ref=f6e63]:
+            - heading "Command Palette" [level=2] [ref=f6e64]
+            - paragraph [ref=f6e65]: Search for a command to run...
+    - main [ref=f6e66]:
+      - generic [ref=f6e68]:
+        - navigation "Breadcrumb" [ref=f6e69]:
+          - link "Network" [ref=f6e70] [cursor=pointer]:
+            - /url: /network
+          - generic [ref=f6e73]: aqz-KE-bpKQ
+        - status [ref=f6e74]:
+          - paragraph [ref=f6e77]: Loading ego-network…
+    - contentinfo [ref=f6e78]: Computational Social Science Research Workbench · data is observed, never estimated · missing values are reported explicitly
+  - button "Open Next.js Dev Tools" [ref=f6e84] [cursor=pointer]

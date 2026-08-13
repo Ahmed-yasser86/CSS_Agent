@@ -179,6 +179,15 @@ def test_edges_run_filter(service) -> None:
     assert len(service.edges(run_id="net_r2")) == 5
 
 
+def test_edges_ordered_by_feed_rank_per_source(service) -> None:
+    """Edges are grouped by source and ranked by feed position ascending."""
+    edges = service.edges()
+    for source in {"a", "b", "a2", "b2", "c2", "d2"}:
+        group = [e for e in edges if e["source_video_id"] == source]
+        positions = [e["position"] for e in group]
+        assert positions == sorted(positions), f"{source} not feed-ranked: {positions}"
+
+
 def test_export_graphml_marker(service) -> None:
     filename, content, media_type = service.export_edges(format="graphml")
     assert filename == "recommendations.graphml"

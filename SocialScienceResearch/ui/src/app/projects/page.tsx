@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/features/state";
 import { ProjectBuilder } from "@/components/features/datasets/project-builder";
-import { getProjects, deleteProject } from "@/services/datasets";
+import { listProjects, deleteProject } from "@/services/datasets";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/toast";
 import { formatDateTime } from "@/lib/format";
@@ -16,12 +18,13 @@ import type { ResearchProject } from "@/lib/dataset-types";
 export default function ProjectsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [builderOpen, setBuilderOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ["projects"],
-    queryFn: () => getProjects(),
+    queryFn: () => listProjects(),
   });
 
   const del = useMutation({
@@ -109,8 +112,9 @@ export default function ProjectsPage() {
       <ProjectBuilder
         open={builderOpen}
         onOpenChange={setBuilderOpen}
-        onCreated={() => {
+        onCreated={(project) => {
           void queryClient.invalidateQueries({ queryKey: ["projects"] });
+          router.push(`/projects/${project.project_id}`);
         }}
       />
     </div>
@@ -131,13 +135,26 @@ function ProjectCard({
   return (
     <Card className="flex flex-col gap-2 p-4">
       <div className="flex items-start justify-between gap-2">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="text-left text-sm font-medium outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        >
-          {project.name}
-        </button>
+        <div className="flex min-w-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label={expanded ? "Collapse" : "Expand"}
+            className="shrink-0 rounded-md p-0.5 text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            {expanded ? (
+              <ChevronDown className="size-4" aria-hidden />
+            ) : (
+              <ChevronRight className="size-4" aria-hidden />
+            )}
+          </button>
+          <Link
+            href={`/projects/${project.project_id}`}
+            className="truncate text-sm font-medium outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            {project.name}
+          </Link>
+        </div>
         <Button type="button" variant="ghost" size="icon-sm" aria-label={`Delete project ${project.name}`} onClick={onDelete}>
           <Trash2 className="size-4" aria-hidden />
         </Button>
