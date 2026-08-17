@@ -30,6 +30,7 @@ from typing import Any, Protocol
 from SocialScienceResearch.acquisition import (
     AcquisitionError,
     AcquisitionProvider,
+    RecommendationUnsupportedError,
     TranscriptUnsupportedError,
 )
 from SocialScienceResearch.acquisition.errors import LiveEventSkipError
@@ -37,6 +38,7 @@ from SocialScienceResearch.acquisition.normalization import (
     normalize_channel,
     normalize_channel_observation,
     normalize_comments,
+    normalize_recommendations,
     normalize_video,
     normalize_video_observation,
 )
@@ -505,6 +507,9 @@ class CollectionService:
 
             if not enrich:
                 self._persist_flat_observation(raw, run.run_id, video.video_id)
+                # Also scrape recommendations if enabled (even without deep enrichment)
+                if effective.get("scrape_recommendations"):
+                    self._scrape_recommendations_for_video(run, video, errors)
                 continue
             can_enrich, reason = self._can_enrich(
                 index, created + existing, effective
@@ -516,6 +521,9 @@ class CollectionService:
                 # this video was skipped so it is observable on the result.
                 skipped.append({"video_id": video.video_id, "reason": reason})
                 self._persist_flat_observation(raw, run.run_id, video.video_id)
+                # Also scrape recommendations if enabled
+                if effective.get("scrape_recommendations"):
+                    self._scrape_recommendations_for_video(run, video, errors)
 
         # Phase 2 (concurrent): network-only deep enrichment; the main thread
         # persists each result as its future completes (order is not
@@ -543,6 +551,39 @@ class CollectionService:
         obs = normalize_video_observation(raw, run_id, video_id)
         if obs is not None:
             self._repos.videos.save_video_observation(obs)
+
+    def _scrape_recommendations_for_video(
+        self,
+        run: CollectionRun,
+        video,
+        errors: list[CollectionError],
+    ) -> None:
+        """Scrape and persist recommendations for a single video."""
+        try:
+            throttle = _RateLimiter(self._settings.scraper.request_delay_seconds)
+            throttle.wait()
+            raw_recommendations = self._provider.extract_recommendations(video.url)
+        except RecommendationUnsupportedError as exc:
+            err = self._record_error(
+                run,
+                EntityType.RECOMMENDATION,
+                video.video_id,
+                exc.error_type,
+                str(exc),
+                retryable=False,
+            )
+            errors.append(err)
+            return
+        except AcquisitionError as exc:
+            err = self._record_error(
+                run, EntityType.RECOMMENDATION, video.video_id, exc.error_type, str(exc)
+            )
+            errors.append(err)
+            return
+
+        edges = normalize_recommendations(video.video_id, raw_recommendations, run.run_id)
+        for edge in edges:
+            self._repos.recommendations.save_recommendation(edge)
 
     def _enrich_video_task(
         self,

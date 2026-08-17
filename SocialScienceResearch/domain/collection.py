@@ -74,6 +74,7 @@ class CollectionSpec(BaseModel):
     include_live_videos: bool | None = None
     video_tabs: list[str] | None = None
     scrape_live_only: bool | None = None
+    scrape_recommendations: bool | None = None
 
     @field_validator(
         "max_comments_per_video", "max_videos_to_enrich", "max_videos_per_channel"
@@ -174,6 +175,11 @@ class CollectionSpec(BaseModel):
                 self.video_tabs
                 if self.video_tabs is not None
                 else getattr(collection, "video_tabs", None)
+            ),
+            "scrape_recommendations": (
+                self.scrape_recommendations
+                if self.scrape_recommendations is not None
+                else getattr(collection, "scrape_recommendations", False)
             ),
             "video_criteria": (
                 self.video_criteria.model_dump(mode="json")

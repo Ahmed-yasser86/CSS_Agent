@@ -183,3 +183,23 @@ def test_normalize_recommendations_positions() -> None:
     assert edges[0].recommended_video_id == "rec1"
     assert edges[0].channel_id == "UCx"
     assert edges[0].collection_run_id == "run_1"
+
+
+def test_normalize_recommendations_extracts_channel_name() -> None:
+    raw_entries = [
+        {"id": "r1", "channel_id": "UCa", "channel": "Channel Alpha"},
+        {"id": "r2", "channel": {"id": "UCb", "name": "Channel Beta"}},
+        {"id": "r3", "uploader": "Plain Uploader"},
+        {"id": "r4", "channel_id": "UCd"},
+        {"id": "r5"},
+    ]
+    edges = normalize_recommendations("src", raw_entries, run_id="run_1")
+    by_id = {e.recommended_video_id: e for e in edges}
+    assert by_id["r1"].channel_name == "Channel Alpha"
+    assert by_id["r1"].channel_id == "UCa"
+    assert by_id["r2"].channel_name == "Channel Beta"
+    assert by_id["r2"].channel_id is None
+    assert by_id["r3"].channel_name == "Plain Uploader"
+    assert by_id["r4"].channel_id == "UCd"
+    assert by_id["r4"].channel_name is None
+    assert by_id["r5"].channel_name is None

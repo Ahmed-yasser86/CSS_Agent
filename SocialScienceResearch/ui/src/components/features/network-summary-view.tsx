@@ -120,7 +120,7 @@ export function NetworkSummaryView() {
           onValueChange={(v) => setRunId(v ?? "all")}
           items={[
             { value: "all", label: "All runs" },
-            ...recommendationRuns.map((r) => ({ value: r.run_id, label: r.run_id })),
+            ...recommendationRuns.map((r) => ({ value: r.run_id, label: r.name ?? r.run_id })),
           ]}
         >
           <SelectTrigger size="sm">
@@ -130,7 +130,7 @@ export function NetworkSummaryView() {
             <SelectItem value="all">All runs</SelectItem>
             {recommendationRuns.map((r) => (
               <SelectItem key={r.run_id} value={r.run_id}>
-                {r.run_id}
+                {r.name ?? r.run_id}
               </SelectItem>
             ))}
           </SelectContent>

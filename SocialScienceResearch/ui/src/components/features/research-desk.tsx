@@ -47,7 +47,7 @@ export function ResearchDesk() {
                   className="block rounded-md border p-3 transition-colors hover:bg-muted"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <code className="text-xs">{run.run_id}</code>
+                    <code className="text-xs">{run.name ?? run.run_id}</code>
                     <RunStatusBadge status={run.status} />
                   </div>
                   <p className="mt-1 truncate text-xs text-muted-foreground">

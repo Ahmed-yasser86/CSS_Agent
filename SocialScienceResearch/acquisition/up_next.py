@@ -142,6 +142,21 @@ def _renderer_channel_id(renderer: dict[str, Any]) -> str | None:
     return None
 
 
+def _renderer_channel_name(renderer: dict[str, Any]) -> str | None:
+    """Read the channel *name* out of a renderer's byline (run text)."""
+    for key in ("longBylineText", "shortBylineText", "ownerText"):
+        byline = renderer.get(key)
+        if not isinstance(byline, dict):
+            continue
+        runs = byline.get("runs")
+        if not isinstance(runs, list) or not runs or not isinstance(runs[0], dict):
+            continue
+        text = runs[0].get("text")
+        if isinstance(text, str) and text.strip():
+            return text.strip()
+    return None
+
+
 def _map_renderer(renderer: dict[str, Any]) -> dict[str, Any] | None:
     """Map a single renderer to the provider dict contract.
 
@@ -176,6 +191,9 @@ def _map_renderer(renderer: dict[str, Any]) -> dict[str, Any] | None:
     channel_id = _renderer_channel_id(renderer)
     if channel_id:
         entry["channel_id"] = channel_id
+    channel_name = _renderer_channel_name(renderer)
+    if channel_name:
+        entry["channel_name"] = channel_name
     return entry
 
 

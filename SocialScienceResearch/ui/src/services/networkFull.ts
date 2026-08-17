@@ -1,11 +1,14 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { request, toQuery } from "@/services/api";
 import type {
+  ChannelGraphPayload,
   ChannelProjection,
   EdgeRow,
+  GraphProjection,
   NetworkExportFormat,
+  NetworkGraphPayload,
   NetworkMetrics,
   Paginated,
   TemporalResult,
@@ -20,6 +23,13 @@ export const networkFullKeys = {
     ["network", "full", "edges", runId ?? "all", cursor ?? "start"] as const,
   channels: (runId?: string) =>
     ["network", "full", "channels", runId ?? "all"] as const,
+  graph: (
+    runId?: string,
+    channelId?: string,
+    channelScope?: string,
+    projection: GraphProjection = "video",
+  ) =>
+    ["network", "graph", runId ?? "all", channelId ?? "all", channelScope ?? "source", projection] as const,
 };
 
 export function getNetworkMetrics(
@@ -63,10 +73,12 @@ export function getNetworkExportUrl(
   return `${base}/network/export${toQuery({ format, run_id: runId })}`;
 }
 
-export function useNetworkMetrics(runId?: string, topN = 10) {
+export function useNetworkMetrics(runId?: string, topN = 10, options = {}) {
   return useQuery({
     queryKey: networkFullKeys.metrics(runId, topN),
     queryFn: () => getNetworkMetrics(runId, topN),
+    retry: 1,
+    ...options,
   });
 }
 
@@ -91,5 +103,50 @@ export function useChannelProjection(runId?: string) {
   return useQuery({
     queryKey: networkFullKeys.channels(runId),
     queryFn: () => getChannelProjection(runId),
+  });
+}
+
+export function getNetworkGraph(
+  runId?: string,
+  channelId?: string,
+  channelScope?: "source" | "target" | "either",
+  projection: GraphProjection = "video",
+): Promise<NetworkGraphPayload | ChannelGraphPayload> {
+  return request(
+    `/network/graph${toQuery({ run_id: runId, channel_id: channelId, channel_scope: channelScope, projection })}`,
+  );
+}
+
+export function useNetworkGraph(
+  runId?: string,
+  channelId?: string,
+  channelScope: "source" | "target" | "either" = "source",
+  projection: GraphProjection = "video",
+  options = {},
+) {
+  return useQuery({
+    queryKey: networkFullKeys.graph(runId, channelId, channelScope, projection),
+    queryFn: () => getNetworkGraph(runId, channelId, channelScope, projection),
+    placeholderData: (previous) => previous,
+    ...options,
+  });
+}
+
+export type ScrapeKind = "video" | "run" | "channel";
+
+export function scrapeNetwork(kind: ScrapeKind, body: Record<string, unknown>): Promise<{ job_id: string }> {
+  return request(`/network/scrape/${kind}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function useScrapeNetwork(kind: ScrapeKind) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Record<string, unknown>) => scrapeNetwork(kind, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    },
   });
 }

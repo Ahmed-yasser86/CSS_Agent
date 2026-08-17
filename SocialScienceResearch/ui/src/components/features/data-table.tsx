@@ -54,7 +54,7 @@ export function DataTable<T>({
     useState<SortDirection>(initialSortDirection);
 
   const sorted = useMemo(() => {
-    if (!sortKey) return rows;
+    if (!sortKey || !rows) return rows;
     const column = columns.find((c) => c.key === sortKey);
     if (!column?.sortValue) return rows;
     const dir = sortDirection === "asc" ? 1 : -1;
@@ -80,7 +80,7 @@ export function DataTable<T>({
     }
   }
 
-  if (rows.length === 0) {
+  if (!rows || rows.length === 0) {
     return (
       <EmptyState title={emptyTitle} description={emptyDescription} />
     );

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { ProjectDetail } from "@/components/features/datasets/project-detail";
+import { getProjectMeta } from "@/services/server-data";
 
 export default async function ProjectPage({
   params,
@@ -8,6 +9,7 @@ export default async function ProjectPage({
   params: Promise<{ projectId: string }>;
 }) {
   const { projectId } = await params;
+  const name = (await getProjectMeta(projectId)) ?? projectId;
   return (
     <div className="space-y-4">
       <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -15,7 +17,7 @@ export default async function ProjectPage({
           Projects
         </Link>
         <ChevronRight className="size-3" aria-hidden />
-        <span className="font-mono">{projectId}</span>
+        <span className="truncate">{name}</span>
       </nav>
       <ProjectDetail projectId={projectId} />
     </div>

@@ -60,6 +60,13 @@ export function ProjectItemDetail({
   const [editOpen, setEditOpen] = useState(false);
 
   const itemQuery = useProjectItem(projectId, itemId);
+  const datasetsQuery = useDatasetList();
+  const datasetNames = new Map(
+    (datasetsQuery.data?.pages ?? [])
+      .flatMap((p) => p.items)
+      .filter((d) => d.name)
+      .map((d) => [d.dataset_id, d.name]),
+  );
   const deleteItem = useDeleteProjectItem();
   const removeSamples = useRemoveSamplesFromItem();
   const removeDatasets = useRemoveDatasetsFromItem();
@@ -211,7 +218,9 @@ export function ProjectItemDetail({
                   key={datasetId}
                   className="flex items-center justify-between gap-2 rounded bg-muted/30 px-2 py-1"
                 >
-                  <span className="truncate font-mono text-xs">{datasetId}</span>
+                  <span className="truncate text-xs">
+                    {datasetNames.get(datasetId) ?? datasetId}
+                  </span>
                   <button
                     type="button"
                     onClick={() =>

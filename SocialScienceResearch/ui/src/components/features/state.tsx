@@ -1,6 +1,9 @@
-import { Inbox, Loader2, AlertTriangle, HelpCircle, CircleOff } from "lucide-react";
+"use client";
+
+import { Inbox, Loader2, AlertTriangle, HelpCircle, CircleOff, X, CheckCircle, AlertCircle } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
+import { useState, useEffect } from "react";
 
 export function LoadingState({
   label = "Loading…",
@@ -115,5 +118,67 @@ export function PartialState({
       <AlertTitle>{title}</AlertTitle>
       <AlertDescription>{description}</AlertDescription>
     </Alert>
+  );
+}
+
+export function Toast({
+  message,
+  type = "success",
+  onClose,
+}: {
+  message: string;
+  type?: "success" | "error" | "info";
+  onClose?: () => void;
+}) {
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setVisible(false);
+      onClose?.();
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  if (!visible) return null;
+
+  const icons = {
+    success: CheckCircle,
+    error: AlertCircle,
+    info: AlertTriangle,
+  };
+
+  const Icon = icons[type];
+  const colors = {
+    success: "border-green-500/50 bg-green-500/10 text-green-600 dark:text-green-400",
+    error: "border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400",
+    info: "border-blue-500/50 bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  };
+
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 rounded-lg border px-4 py-3 shadow-lg min-w-[280px] max-w-md",
+        colors[type]
+      )}
+      role="alert"
+      aria-live="polite"
+    >
+      <Icon className="size-4 flex-shrink-0" aria-hidden />
+      <p className="text-sm flex-1">{message}</p>
+      {onClose && (
+        <button
+          type="button"
+          onClick={() => {
+            setVisible(false);
+            onClose();
+          }}
+          className="flex-shrink-0 text-muted-foreground hover:text-foreground"
+          aria-label="Dismiss"
+        >
+          <X className="size-4" aria-hidden />
+        </button>
+      )}
+    </div>
   );
 }

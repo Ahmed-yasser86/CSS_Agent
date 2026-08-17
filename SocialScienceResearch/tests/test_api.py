@@ -143,6 +143,17 @@ def test_channel_overview(client) -> None:
     assert body["subscribers"]["availability"] == "available"
 
 
+def test_channel_by_id(client) -> None:
+    resp = client.get(f"{PREFIX}/channels/UCapi000000000000000000000")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["channel_id"] == "UCapi000000000000000000000"
+    assert body["title"] is not None
+
+    resp = client.get(f"{PREFIX}/channels/UCmissing000000000000000000")
+    assert resp.status_code == 404
+
+
 def test_channel_videos_filter(client) -> None:
     resp = client.get(
         f"{PREFIX}/channels/UCapi000000000000000000000/videos",

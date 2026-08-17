@@ -27,6 +27,7 @@ from SocialScienceResearch.domain.models import (
     VideoObservation,
 )
 from SocialScienceResearch.domain.dataset_models import Dataset, ProjectItem
+from SocialScienceResearch.domain.layer_models import LayerRun
 from SocialScienceResearch.domain.sample_models import Sample
 
 
@@ -58,6 +59,7 @@ class Repositories:
     datasets: DatasetRepository
     samples: SampleRepository
     project_items: ProjectItemRepository
+    layers: LayerRunRepository
 
 
 class ChannelRepository(ABC):
@@ -332,3 +334,24 @@ class ProjectItemRepository(ABC):
     @abstractmethod
     def delete_item(self, item_id: str) -> None:
         """Delete a project item."""
+
+
+class LayerRunRepository(ABC):
+    """Persistence contract for crawl-layer anchor records.
+
+    ``LayerRun`` is the crawl anchor written *after* a crawl step completes
+    (like datasets), so frontier resolution and layer summaries are cheap
+    reads instead of O(edges) scans over raw rows.
+    """
+
+    @abstractmethod
+    def save_layer_run(self, layer_run: LayerRun) -> None:
+        """Upsert a layer-run record (by ``layer_run_id``)."""
+
+    @abstractmethod
+    def get_layer_run(self, layer_run_id: str) -> LayerRun | None:
+        """Return the layer-run record with the given id, if present."""
+
+    @abstractmethod
+    def list_layer_runs(self) -> list[LayerRun]:
+        """Return all layer-run records, oldest (layer 0) first."""

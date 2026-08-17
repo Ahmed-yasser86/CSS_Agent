@@ -31,9 +31,9 @@ export default function VideoHistoryPage() {
         <ChevronRight className="size-3" aria-hidden />
         <Link
           href={`/videos/${videoId}`}
-          className="font-mono underline-offset-2 hover:underline"
+          className="underline-offset-2 hover:underline"
         >
-          {videoId}
+          {videoQuery.data?.title ?? videoId}
         </Link>
         <ChevronRight className="size-3" aria-hidden />
         <span>History</span>

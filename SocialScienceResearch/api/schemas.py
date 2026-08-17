@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from SocialScienceResearch.domain.layer_models import ScrapeFilters
 from SocialScienceResearch.services.pagination import Paginated
 
 __all__ = [
@@ -35,6 +36,8 @@ __all__ = [
     "JobPayload",
     "JobResultPayload",
     "JobSubmitPayload",
+    "LayerBootstrapRequest",
+    "LayerScrapeRequest",
     "NetworkSummaryPayload",
     "OperatorInfoPayload",
     "Paginated",
@@ -150,6 +153,7 @@ class JobResultPayload(_Base):
     skipped: list[dict[str, Any]] | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    dataset_id: str | None = None
 
 
 class RunPayload(_Base):
@@ -158,6 +162,7 @@ class RunPayload(_Base):
     target_url: str
     target_channel_id: str | None = None
     target_video_id: str | None = None
+    parent_run_id: str | None = None
     started_at: datetime
     finished_at: datetime | None = None
     status: str
@@ -183,6 +188,63 @@ class UpdateRunRequest(_Base):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = None
+
+
+class LayerBootstrapRequest(_Base):
+    """Body for ``POST .../network/layer`` (``extra="forbid"``).
+
+    Creates the seed ``LayerRun`` (layer 0) from an existing run whose videos/
+    sources become the crawl frontier.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    projection: str = "video"
+
+
+class LayerScrapeRequest(_Base):
+    """Body for ``POST .../network/layer/scrape`` (``extra="forbid"``).
+
+    Either ``parent_layer_run_id`` (advance an existing crawl) or a seed
+    ``parent_run_id`` (start layer 1) is required. ``projection`` selects the
+    graph view; ``collect_comments`` toggles comment enrichment for new videos.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    parent_layer_run_id: str | None = None
+    parent_run_id: str | None = None
+    projection: str = "video"
+    collect_comments: bool = True
+    concurrency: int | None = None
+
+
+class ExpansionScrapeVideoRequest(_Base):
+    """Body for ``POST .../network/expansion/scrape-video``.
+
+    One-hop expansion of a single video; ``filters`` controls what is scraped
+    from its recommendations.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    video_id: str
+    filters: ScrapeFilters = Field(default_factory=ScrapeFilters)
+
+
+class ExpansionScrapeAllRequest(_Base):
+    """Body for ``POST .../network/expansion/scrape-all``.
+
+    One-hop expansion of the current network slice: either an explicit
+    ``video_ids`` list or a ``run_id`` whose videos/sources form the scope.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str | None = None
+    video_ids: list[str] = Field(default_factory=list)
+    filters: ScrapeFilters = Field(default_factory=ScrapeFilters)
 
 
 class ChannelPayload(_Base):
@@ -265,6 +327,7 @@ class RecommendationPayload(_Base):
     status: str
     channel_id: str | None = None
     title: str | None = None
+    run_type: str | None = None
     observed_at: datetime | None = None
     raw_json: dict[str, Any] = Field(default_factory=dict)
 

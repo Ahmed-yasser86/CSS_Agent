@@ -9,6 +9,8 @@ Extends :class:`RecommendationGraphService` with:
   consecutive requested runs;
 * ``edges`` / ``export_edges`` - raw edge listing and
   graphml/edgelist/gexf export for interoperability with external tools;
+* ``graph`` - enriched node/edge payload that drives the interactive graph UI
+  (every node carries ``[ID] + Channel Name + Video Title + metrics``);
 * ``channel_projection`` - a lightweight channel-level projection.
 
 NetworkX semantics (ADR-0009)
@@ -30,6 +32,15 @@ NetworkX semantics (ADR-0009)
 * ``nx.hits`` is a directed measure; hub/authority scores are returned
   unnormalised (the power iteration may yield small negative weights on
   graphs with zero-score sinks - the top-``n`` ranks remain meaningful).
+
+Metadata resolution
+-------------------
+Node labels must never show a bare id without context. ``edges()`` and
+``graph()`` enrich every row from persisted repositories (videos, video
+observations, channels, runs) in a handful of batch reads - nothing is
+fabricated. A recommended (target) video that was never persisted as a
+``Video`` row keeps its observation-row ``title``/``channel_id`` and ``None``
+for the statistics it has no row for.
 """
 
 from __future__ import annotations
@@ -50,6 +61,9 @@ from SocialScienceResearch.services.statistics_service import StatisticsService
 #: Default page size applied by list endpoints (mirrors ``api/app.py``).
 DEFAULT_PAGE_SIZE = 50
 
+#: Which endpoint of an edge a ``channel_id`` filter matches by default.
+ChannelScope = str  # "source" | "target" | "either"
+
 
 class _Base(BaseModel):
     """:class:`ConfigDict` ``extra="allow"`` base for response models."""
@@ -58,14 +72,40 @@ class _Base(BaseModel):
 
 
 class EdgeRow(_Base):
-    """One serialized recommendation edge for listing / export."""
+    """One serialized recommendation edge for listing / export.
+
+    Carries metadata for BOTH endpoint videos so the UI can render composite
+    labels (``[ID] + Channel Name + Video Title + metrics``) without a second
+    round-trip. Target fields also fall back to the observation row's own
+    ``title``/``channel_id`` (populated at scrape time).
+    """
 
     source_video_id: str
     recommended_video_id: str
     position: int | None = None
     run_id: str | None = None
+    run_type: str | None = None  # "channel" | "video" | "recommendation"
+    run_name: str | None = None  # researcher-provided label from CollectionRun
+    observed_at: Any = None
+    layer_index: int | None = None  # producing crawl layer (layer-crawl feature)
+
+    # Source (the video that made the recommendation) metadata.
+    source_title: str | None = None
+    source_channel_id: str | None = None
+    source_channel_name: str | None = None
+    source_thumbnail_url: str | None = None
+    source_views: int | None = None
+    source_likes: int | None = None
+    source_duration: int | None = None
+
+    # Target (the recommended video) metadata.
     title: str | None = None
     channel_id: str | None = None
+    channel_name: str | None = None
+    thumbnail_url: str | None = None
+    views: int | None = None
+    likes: int | None = None
+    duration: int | None = None
 
 
 class DegreeDistribution(_Base):
@@ -133,18 +173,174 @@ class TemporalResult(_Base):
     growth: list[TemporalGrowth] = []
 
 
+class ChannelFacet(_Base):
+    """A distinct channel observed on the network slice (id + name)."""
+
+    channel_id: str
+    channel_name: str | None = None
+
+
 class ChannelProjection(_Base):
     """Lightweight channel-level projection (documented in the module doc).
 
-    Recommendation edges carry a single ``channel_id`` (the channel of the
-    recommended video, per ``RecommendationObservation``). ``channels`` lists
-    the distinct ids observed on edges and ``edge_count`` counts the edges
-    carrying a channel attribution. This is intentionally a lightweight
-    projection - no inter-channel co-occurrence graph is built.
+    ``channels`` lists the distinct channels observed on edges (with their
+    resolved names when a ``Channel`` row exists) and ``edge_count`` counts
+    the edges carrying a channel attribution.
     """
 
-    channels: list[str] = []
+    channels: list[ChannelFacet] = []
     edge_count: int = 0
+
+
+class ChannelGraphNode(_Base):
+    """One channel-projection node (doc ``analysis_next_layer_scrape.md`` §4.2).
+
+    ``video_count`` counts the distinct videos of this channel in the slice;
+    ``in_degree``/``out_degree`` count distinct channel neighbours; provenance
+    (``run_ids``/``run_types``) mirrors ``GraphNode``.
+    """
+
+    channel_id: str
+    channel_name: str | None = None
+    avatar_url: str | None = None
+    subscriber_count: int | None = None  # latest ChannelObservation
+    video_count: int = 0
+    in_degree: int = 0
+    out_degree: int = 0
+    run_ids: list[str] = []
+    run_types: list[str] = []
+
+
+class ChannelGraphEdge(_Base):
+    """One channel-projection edge: weighted aggregation of video edges A->B.
+
+    ``video_edge_count`` counts the underlying video-level edges;
+    ``sample_video_pairs`` holds the first few ``{source_video_id,
+    recommended_video_id, position}`` pairs as evidence.
+    """
+
+    source: str  # channel_id
+    target: str  # channel_id
+    video_edge_count: int = 0
+    run_ids: list[str] = []
+    sample_video_pairs: list[dict[str, Any]] = []
+
+
+class ChannelGraphPayload(_Base):
+    """Channel-projection graph payload (doc §4.2).
+
+    ``channels`` carries the ``ChannelFacet`` list plus ``unattributed_edges``
+    in a facet's metadata dict when present (edges dropped because either
+    endpoint's channel could not be resolved are counted, never synthetic).
+    """
+
+    projection: str = "channel"
+    nodes: list[ChannelGraphNode] = []
+    edges: list[ChannelGraphEdge] = []
+    channels: list[ChannelFacet] = []
+    runs: list[dict[str, Any]] = []  # {run_id, run_type, name}
+    node_count: int = 0
+    edge_count: int = 0
+    unattributed_edges: int = 0
+
+
+class GraphNode(_Base):
+    """One enriched network node for the interactive graph.
+
+    ``kind`` describes the node's structural role: ``source`` (out-edges only),
+    ``target`` (in-edges only), ``both`` or ``other``. ``runs``/``run_types``
+    list the provenance of the edges touching this node.
+    """
+
+    video_id: str
+    title: str | None = None
+    channel_id: str | None = None
+    channel_name: str | None = None
+    thumbnail_url: str | None = None
+    views: int | None = None
+    likes: int | None = None
+    duration: int | None = None
+    kind: str = "other"
+    in_degree: int = 0
+    out_degree: int = 0
+    run_ids: list[str] = []
+    run_types: list[str] = []
+    community_id: int | None = None
+
+
+class GraphEdge(_Base):
+    """One enriched graph edge (provenance + role of the recommendation)."""
+
+    source: str
+    target: str
+    position: int | None = None
+    run_id: str | None = None
+    run_type: str | None = None
+    run_name: str | None = None
+    title: str | None = None
+
+
+class NetworkGraph(_Base):
+    """Full graph payload: enriched nodes + edges + run/channel facets.
+
+    Served by ``GET /network/graph`` so the UI renders readable nodes
+    (``[ID] + Channel Name + Video Title + metrics``) and populates the
+    run/channel filter dropdowns from real facets - never from the rendered
+    graph.
+    """
+
+    nodes: list[GraphNode] = []
+    edges: list[GraphEdge] = []
+    runs: list[dict[str, Any]] = []  # {run_id, run_type, name}
+    channels: list[ChannelFacet] = []
+    node_count: int = 0
+    edge_count: int = 0
+
+
+class _MetadataIndex:
+    """Batch-resolved metadata caches shared across one edge-list call.
+
+    Built with a handful of repository scans (no per-edge N+1):
+    ``list_videos``, ``get_latest_video_observations``, ``list_channels`` and
+    ``list_runs``.
+    """
+
+    def __init__(self, repos: Repositories) -> None:
+        self._repos = repos
+        videos = {v.video_id: v for v in repos.videos.list_videos()}
+        self._videos = videos
+        self._observations = repos.videos.get_latest_video_observations(list(videos))
+        channels = {c.channel_id: c for c in repos.channels.list_channels()}
+        self._channels = channels
+        self._runs = {r.run_id: r for r in repos.runs.list_runs()}
+
+    def video(self, video_id: str) -> dict[str, Any]:
+        video = self._videos.get(video_id)
+        if video is None:
+            return {}
+        obs = self._observations.get(video_id)
+        channel_name = (
+            self._channels.get(video.channel_id).title
+            if video.channel_id and self._channels.get(video.channel_id)
+            else None
+        )
+        return {
+            "title": video.title,
+            "channel_id": video.channel_id,
+            "channel_name": channel_name,
+            "thumbnail_url": video.thumbnail_url,
+            "views": obs.view_count if obs else None,
+            "likes": obs.like_count if obs else None,
+            "duration": video.duration,
+        }
+
+    def run(self, run_id: str | None) -> tuple[str | None, str | None]:
+        if not run_id:
+            return None, None
+        run = self._runs.get(run_id)
+        if run is None:
+            return None, None
+        return run.run_type.value if run.run_type else None, run.name
 
 
 class NetworkAnalyticsService:
@@ -236,36 +432,246 @@ class NetworkAnalyticsService:
         return TemporalResult(slices=slices, growth=growth)
 
     # ------------------------------------------------------------------
-    def edges(self, run_id: str | None = None) -> list[dict[str, Any]]:
+    def edges(
+        self,
+        run_id: str | None = None,
+        channel_id: str | None = None,
+        channel_scope: ChannelScope = "source",
+        layer_index: int | None = None,
+        run_ids: list[str] | None = None,
+    ) -> list[EdgeRow]:
         """Serialize all observed edges for a slice (export/listing).
 
         Rows are ordered by feed rank: grouped by source video, then by the
         ``position`` the recommendation occupied in that source's rail (so the
         edge listing and exports reflect the observed feed order).
+
+        Supports filtering by ``run_id`` and ``channel_id``. ``channel_id``
+        matches the **source** channel by default (show channel X's videos and
+        their 1->N recommendation trees); pass ``channel_scope="target"`` or
+        ``"either"`` for the other endpoint semantics. ``layer_index`` limits
+        the slice to edges produced by a specific crawl layer (``None`` = all);
+        ``run_ids`` limits the slice to a set of runs (network expansions).
         """
-        rows: list[dict[str, Any]] = []
+        metadata = _MetadataIndex(self._repos)
+        rows: list[EdgeRow] = []
         for edge in self._repos.recommendations.list_recommendation_edges(
             run_id=run_id
         ):
+            if layer_index is not None and edge.layer_index != layer_index:
+                continue
+            if run_ids is not None and edge.collection_run_id not in run_ids:
+                continue
+            source_meta = metadata.video(edge.source_video_id)
+            target_meta = metadata.video(edge.recommended_video_id)
+            run_type, run_name = metadata.run(edge.collection_run_id)
+
+            if channel_id:
+                source_channel = source_meta.get("channel_id")
+                target_channel = (
+                    target_meta.get("channel_id") or edge.channel_id
+                )
+                if channel_scope == "target":
+                    if target_channel != channel_id:
+                        continue
+                elif channel_scope == "either":
+                    if source_channel != channel_id and target_channel != channel_id:
+                        continue
+                else:  # default "source"
+                    if source_channel != channel_id:
+                        continue
+
             rows.append(
-                {
-                    "source_video_id": edge.source_video_id,
-                    "recommended_video_id": edge.recommended_video_id,
-                    "position": edge.position,
-                    "run_id": edge.collection_run_id,
-                    "title": edge.title,
-                    "channel_id": edge.channel_id,
-                }
+                EdgeRow(
+                    source_video_id=edge.source_video_id,
+                    recommended_video_id=edge.recommended_video_id,
+                    position=edge.position,
+                    run_id=edge.collection_run_id,
+                    run_type=run_type,
+                    run_name=run_name,
+                    observed_at=edge.observed_at,
+                    layer_index=edge.layer_index,
+                    source_title=source_meta.get("title"),
+                    source_channel_id=source_meta.get("channel_id"),
+                    source_channel_name=source_meta.get("channel_name"),
+                    source_thumbnail_url=source_meta.get("thumbnail_url"),
+                    source_views=source_meta.get("views"),
+                    source_likes=source_meta.get("likes"),
+                    source_duration=source_meta.get("duration"),
+                    title=edge.title or target_meta.get("title"),
+                    channel_id=edge.channel_id or target_meta.get("channel_id"),
+                    channel_name=edge.channel_name or target_meta.get("channel_name"),
+                    thumbnail_url=target_meta.get("thumbnail_url"),
+                    views=target_meta.get("views"),
+                    likes=target_meta.get("likes"),
+                    duration=target_meta.get("duration"),
+                )
             )
         return sorted(
             rows,
             key=lambda row: (
-                row["source_video_id"],
-                row["position"] is None,
-                row["position"] if row["position"] is not None else 0,
-                row["run_id"] or "",
-                row["recommended_video_id"],
+                row.source_video_id,
+                row.position is None,
+                row.position if row.position is not None else 0,
+                row.run_id or "",
+                row.recommended_video_id,
             ),
+        )
+
+    # ------------------------------------------------------------------
+    def graph(
+        self,
+        run_id: str | None = None,
+        channel_id: str | None = None,
+        channel_scope: ChannelScope = "source",
+        layer_index: int | None = None,
+        run_ids: list[str] | None = None,
+    ) -> NetworkGraph:
+        """Enriched node/edge payload driving the interactive graph UI.
+
+        Nodes carry composite-label metadata (``[ID] + Channel Name + Video
+        Title + thumbnails/metrics``) plus structural info (degree, kind) and
+        provenance (run_ids/run_types). Facets (runs, channels) let the filter
+        bar populate from real data without a second request. ``layer_index``
+        limits the slice to one crawl layer (``None`` = all); ``run_ids``
+        limits the slice to a set of runs (network expansions).
+        """
+        rows = self.edges(
+            run_id=run_id,
+            channel_id=channel_id,
+            channel_scope=channel_scope,
+            layer_index=layer_index,
+            run_ids=run_ids,
+        )
+
+        in_degree: dict[str, int] = {}
+        out_degree: dict[str, int] = {}
+        run_ids_by_node: dict[str, set[str]] = {}
+        run_types_by_node: dict[str, set[str]] = {}
+
+        edges: list[GraphEdge] = []
+        for row in rows:
+            edges.append(
+                GraphEdge(
+                    source=row.source_video_id,
+                    target=row.recommended_video_id,
+                    position=row.position,
+                    run_id=row.run_id,
+                    run_type=row.run_type,
+                    run_name=row.run_name,
+                    title=row.title,
+                )
+            )
+            out_degree[row.source_video_id] = out_degree.get(row.source_video_id, 0) + 1
+            in_degree[row.recommended_video_id] = (
+                in_degree.get(row.recommended_video_id, 0) + 1
+            )
+            for video_id, edge_run_id, edge_run_type in (
+                (row.source_video_id, row.run_id, row.run_type),
+                (row.recommended_video_id, row.run_id, row.run_type),
+            ):
+                if edge_run_id:
+                    run_ids_by_node.setdefault(video_id, set()).add(edge_run_id)
+                if edge_run_type:
+                    run_types_by_node.setdefault(video_id, set()).add(edge_run_type)
+
+        # Node metadata: sources first (they may also be targets), then any
+        # targets that are not already present. Metadata comes from the
+        # repository-backed resolver - never fabricated. Targets that were
+        # never persisted still carry whatever the provider observed on the
+        # edge row itself (channel id/name, title).
+        video_ids = list(dict.fromkeys(
+            [row.source_video_id for row in rows]
+            + [row.recommended_video_id for row in rows]
+        ))
+        edge_meta: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            edge_meta.setdefault(
+                row.recommended_video_id,
+                {"channel_id": row.channel_id, "channel_name": row.channel_name,
+                 "title": row.title},
+            )
+        metadata = _MetadataIndex(self._repos)
+
+        # Community detection over the undirected projection of this slice so
+        # nodes sharing a cluster render with a common color (community_id is
+        # stable per slice: 0..k-1 ordered by community size, largest first).
+        graph = self._graph_service.build_graph(run_id=run_id)
+        if graph.number_of_edges() > 0:
+            undirected = graph.to_undirected()
+            communities = sorted(
+                greedy_modularity_communities(undirected),
+                key=len,
+                reverse=True,
+            )
+            node_community = {
+                video_id: idx
+                for idx, community in enumerate(communities)
+                for video_id in community
+            }
+        else:
+            node_community = {}
+
+        nodes: list[GraphNode] = []
+        for video_id in video_ids:
+            info = metadata.video(video_id)
+            fallback = edge_meta.get(video_id, {})
+            n_in = in_degree.get(video_id, 0)
+            n_out = out_degree.get(video_id, 0)
+            kind = "other"
+            if n_out > 0 and n_in > 0:
+                kind = "both"
+            elif n_out > 0:
+                kind = "source"
+            elif n_in > 0:
+                kind = "target"
+            nodes.append(
+                GraphNode(
+                    video_id=video_id,
+                    title=info.get("title") or fallback.get("title"),
+                    channel_id=info.get("channel_id") or fallback.get("channel_id"),
+                    channel_name=info.get("channel_name") or fallback.get("channel_name"),
+                    thumbnail_url=info.get("thumbnail_url"),
+                    views=info.get("views"),
+                    likes=info.get("likes"),
+                    duration=info.get("duration"),
+                    kind=kind,
+                    in_degree=n_in,
+                    out_degree=n_out,
+                    run_ids=sorted(run_ids_by_node.get(video_id, set())),
+                    run_types=sorted(run_types_by_node.get(video_id, set())),
+                    community_id=node_community.get(video_id),
+                )
+            )
+
+        channel_rows = {c.channel_id: c for c in self._repos.channels.list_channels()}
+        channel_ids = sorted({n.channel_id for n in nodes if n.channel_id})
+        channels = [
+            ChannelFacet(
+                channel_id=cid,
+                channel_name=channel_rows.get(cid).title if channel_rows.get(cid) else None,
+            )
+            for cid in channel_ids
+        ]
+
+        runs_by_id = {r.run_id: r for r in self._repos.runs.list_runs()}
+        runs = [
+            {
+                "run_id": r.run_id,
+                "run_type": r.run_type.value if r.run_type else None,
+                "name": r.name,
+            }
+            for r in runs_by_id.values()
+            if run_id is None or r.run_id == run_id
+        ]
+
+        return NetworkGraph(
+            nodes=nodes,
+            edges=edges,
+            runs=runs,
+            channels=channels,
+            node_count=len(nodes),
+            edge_count=len(edges),
         )
 
     # ------------------------------------------------------------------
@@ -315,12 +721,184 @@ class NetworkAnalyticsService:
         """Distinct channels observed on edges and their edge coverage.
 
         Lightweight projection: no co-occurrence graph is built between
-        channels (see model docstring).
+        channels (see model docstring). Returns channel names when a ``Channel``
+        row exists so the picker is human-readable.
         """
         edges = self._repos.recommendations.list_recommendation_edges(run_id=run_id)
+        channel_rows = {c.channel_id: c for c in self._repos.channels.list_channels()}
         channels = sorted({e.channel_id for e in edges if e.channel_id})
         edge_count = sum(1 for e in edges if e.channel_id)
-        return ChannelProjection(channels=channels, edge_count=edge_count)
+        return ChannelProjection(
+            channels=[
+                ChannelFacet(
+                    channel_id=cid,
+                    channel_name=channel_rows.get(cid).title
+                    if channel_rows.get(cid)
+                    else None,
+                )
+                for cid in channels
+            ],
+            edge_count=edge_count,
+        )
+
+    # ------------------------------------------------------------------
+    def channel_graph(
+        self,
+        run_id: str | None = None,
+        layer_index: int | None = None,
+        run_ids: list[str] | None = None,
+        channel_id: str | None = None,
+        channel_scope: ChannelScope = "source",
+    ) -> ChannelGraphPayload:
+        """Co-occurrence graph of channels over the (layer-scoped) video edges.
+
+        Nodes are channels; a directed edge A->B aggregates the video-level
+        edges whose source video belongs to channel A and recommended video to
+        channel B (weighted by ``video_edge_count`` with the first few video
+        pairs kept as evidence). Video-level edges whose **either** endpoint's
+        channel cannot be resolved are dropped and counted in
+        ``unattributed_edges`` - never invented as a synthetic node.
+
+        Node metadata: channel name/avatar from the ``Channel`` row and latest
+        subscriber count from the channel observations, all in batch reads.
+        ``channel_id``/``channel_scope`` mirror the video-graph semantics:
+        ``source`` keeps edges whose source channel matches (default),
+        ``target`` keeps edges whose target channel matches, ``either`` keeps
+        edges touching the channel on either endpoint.
+        """
+        metadata = _MetadataIndex(self._repos)
+        channel_videos: dict[str, set[str]] = {}
+        out_neighbours: dict[str, set[str]] = {}
+        in_neighbours: dict[str, set[str]] = {}
+        channel_run_ids: dict[str, set[str]] = {}
+        channel_run_types: dict[str, set[str]] = {}
+        pair_counts: dict[tuple[str, str], int] = {}
+        pair_runs: dict[tuple[str, str], set[str]] = {}
+        pair_samples: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        unattributed = 0
+
+        for edge in self._repos.recommendations.list_recommendation_edges(
+            run_id=run_id
+        ):
+            if layer_index is not None and edge.layer_index != layer_index:
+                continue
+            if run_ids is not None and edge.collection_run_id not in run_ids:
+                continue
+            run_type, _ = metadata.run(edge.collection_run_id)
+            source_channel = metadata.video(edge.source_video_id).get("channel_id")
+            target_channel = (
+                metadata.video(edge.recommended_video_id).get("channel_id")
+                or edge.channel_id
+            )
+            if not source_channel or not target_channel:
+                unattributed += 1
+                continue
+            if channel_id:
+                if channel_scope == "target":
+                    if target_channel != channel_id:
+                        continue
+                elif channel_scope == "either":
+                    if source_channel != channel_id and target_channel != channel_id:
+                        continue
+                else:  # default "source"
+                    if source_channel != channel_id:
+                        continue
+
+            channel_videos.setdefault(source_channel, set()).add(edge.source_video_id)
+            channel_videos.setdefault(target_channel, set()).add(
+                edge.recommended_video_id
+            )
+            out_neighbours.setdefault(source_channel, set()).add(target_channel)
+            in_neighbours.setdefault(target_channel, set()).add(source_channel)
+            if edge.collection_run_id:
+                channel_run_ids.setdefault(source_channel, set()).add(
+                    edge.collection_run_id
+                )
+                channel_run_ids.setdefault(target_channel, set()).add(
+                    edge.collection_run_id
+                )
+            if run_type:
+                channel_run_types.setdefault(source_channel, set()).add(run_type)
+                channel_run_types.setdefault(target_channel, set()).add(run_type)
+
+            pair = (source_channel, target_channel)
+            pair_counts[pair] = pair_counts.get(pair, 0) + 1
+            if edge.collection_run_id:
+                pair_runs.setdefault(pair, set()).add(edge.collection_run_id)
+            samples = pair_samples.setdefault(pair, [])
+            if len(samples) < 3:
+                samples.append(
+                    {
+                        "source_video_id": edge.source_video_id,
+                        "recommended_video_id": edge.recommended_video_id,
+                        "position": edge.position,
+                    }
+                )
+
+        channel_rows = {c.channel_id: c for c in self._repos.channels.list_channels()}
+        latest_observations = self._repos.channels.get_latest_channel_observations(
+            list(channel_videos)
+        )
+        nodes: list[ChannelGraphNode] = []
+        for channel_id in sorted(channel_videos):
+            channel = channel_rows.get(channel_id)
+            obs = latest_observations.get(channel_id)
+            nodes.append(
+                ChannelGraphNode(
+                    channel_id=channel_id,
+                    channel_name=channel.title if channel else None,
+                    avatar_url=channel.avatar_url if channel else None,
+                    subscriber_count=obs.subscriber_count if obs else None,
+                    video_count=len(channel_videos[channel_id]),
+                    in_degree=len(in_neighbours.get(channel_id, set())),
+                    out_degree=len(out_neighbours.get(channel_id, set())),
+                    run_ids=sorted(channel_run_ids.get(channel_id, set())),
+                    run_types=sorted(channel_run_types.get(channel_id, set())),
+                )
+            )
+
+        edges: list[ChannelGraphEdge] = []
+        for (source, target), count in pair_counts.items():
+            edges.append(
+                ChannelGraphEdge(
+                    source=source,
+                    target=target,
+                    video_edge_count=count,
+                    run_ids=sorted(pair_runs.get((source, target), set())),
+                    sample_video_pairs=pair_samples.get((source, target), []),
+                )
+            )
+        edges.sort(key=lambda e: (e.source, e.target))
+
+        channel_ids = sorted({n.channel_id for n in nodes})
+        channels = [
+            ChannelFacet(
+                channel_id=cid,
+                channel_name=channel_rows.get(cid).title if channel_rows.get(cid) else None,
+            )
+            for cid in channel_ids
+        ]
+
+        runs_by_id = {r.run_id: r for r in self._repos.runs.list_runs()}
+        runs = [
+            {
+                "run_id": r.run_id,
+                "run_type": r.run_type.value if r.run_type else None,
+                "name": r.name,
+            }
+            for r in runs_by_id.values()
+            if run_id is None or r.run_id == run_id
+        ]
+
+        return ChannelGraphPayload(
+            nodes=nodes,
+            edges=edges,
+            channels=channels,
+            runs=runs,
+            node_count=len(nodes),
+            edge_count=len(edges),
+            unattributed_edges=unattributed,
+        )
 
     # ------------------------------------------------------------------
     def _slice(self, run_id: str) -> NetworkSlice:

@@ -216,6 +216,11 @@ class CollectionSettings:
         default_factory=lambda: _env_bool("SOCIAL_SCRAPE_LIVE_ONLY", False)
     )
     """When True, only scrape the 'streams' tab (live videos). Overrides video_tabs."""
+    scrape_recommendations: bool = field(
+        default_factory=lambda: _env_bool("SOCIAL_SCRAPE_RECOMMENDATIONS", False)
+    )
+    """When True, automatically scrape recommendations for each video discovered
+    during channel collection. Creates 1->N recommendation tree per video."""
 
 
 @dataclass(frozen=True)

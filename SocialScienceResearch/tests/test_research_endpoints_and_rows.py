@@ -8,6 +8,8 @@ metric values.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -45,8 +47,10 @@ from SocialScienceResearch.utils.idgen import utcnow
 PREFIX = "/api/v1/social-science"
 
 CHANNEL_ID = "UCb1000000000000000000000"
-T1 = utcnow()
-T0 = utcnow()  # tie-safe: T0 <= T1; batch rule only needs determinism here
+T0 = utcnow()
+# T1 is guaranteed later than T0: Windows `datetime.now` can step backward by
+# microseconds, which made T0/T1 ordering nondeterministic under ties.
+T1 = T0 + timedelta(microseconds=1)
 
 
 @pytest.fixture

@@ -20,6 +20,7 @@ import {
   EmptyState,
 } from "@/components/features/state";
 import { getDatasetQuality } from "@/services/datasets";
+import { useDatasetList } from "@/services/queries";
 import { formatNumber, formatPercent, formatDateTime } from "@/lib/format";
 
 export function QualityPanel({ datasetId }: { datasetId: string }) {
@@ -27,6 +28,11 @@ export function QualityPanel({ datasetId }: { datasetId: string }) {
     queryKey: ["datasets", datasetId, "quality"],
     queryFn: () => getDatasetQuality(datasetId),
   });
+  const datasetsQuery = useDatasetList();
+  const datasetName =
+    (datasetsQuery.data?.pages ?? [])
+      .flatMap((p) => p.items)
+      .find((d) => d.dataset_id === datasetId)?.name ?? null;
 
   if (query.isLoading) return <LoadingState label="Loading quality…" />;
   if (query.isError)
@@ -51,7 +57,12 @@ export function QualityPanel({ datasetId }: { datasetId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span className="font-mono">{quality.dataset_id}</span>
+        <span className="truncate">
+          {datasetName ?? datasetId}
+          {datasetName ? (
+            <code className="ml-2 text-muted-foreground">{datasetId}</code>
+          ) : null}
+        </span>
         <span>generated {formatDateTime(quality.generated_at)}</span>
       </div>
 

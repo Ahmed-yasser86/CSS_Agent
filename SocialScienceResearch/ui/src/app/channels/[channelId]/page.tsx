@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { ChannelWorkspace } from "@/components/features/channel-workspace";
+import { getChannelMeta } from "@/services/server-data";
 
 const TABS = ["overview", "videos", "sampling"] as const;
 
@@ -15,6 +16,7 @@ export default async function ChannelPage({
   const sp = await searchParams;
   const rawTab = typeof sp.tab === "string" ? sp.tab : "overview";
   const tab = (TABS as readonly string[]).includes(rawTab) ? rawTab : "overview";
+  const title = (await getChannelMeta(channelId)) ?? channelId;
 
   return (
     <div className="space-y-4">
@@ -23,7 +25,7 @@ export default async function ChannelPage({
           Workspace
         </Link>
         <ChevronRight className="size-3" aria-hidden />
-        <span className="font-mono">{channelId}</span>
+        <span className="truncate">{title}</span>
       </nav>
       <ChannelWorkspace
         channelId={channelId}

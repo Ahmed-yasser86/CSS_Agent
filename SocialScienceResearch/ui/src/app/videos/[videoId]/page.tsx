@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { VideoWorkspace } from "@/components/features/video-workspace";
+import { getVideoMeta } from "@/services/server-data";
 
 const TABS = ["overview", "engagement", "comments", "recommendations"] as const;
 
@@ -15,6 +16,7 @@ export default async function VideoPage({
   const sp = await searchParams;
   const rawTab = typeof sp.tab === "string" ? sp.tab : "overview";
   const tab = (TABS as readonly string[]).includes(rawTab) ? rawTab : "overview";
+  const title = (await getVideoMeta(videoId)) ?? videoId;
 
   return (
     <div className="space-y-4">
@@ -23,7 +25,7 @@ export default async function VideoPage({
           Workspace
         </Link>
         <ChevronRight className="size-3" aria-hidden />
-        <span className="font-mono">{videoId}</span>
+        <span className="truncate">{title}</span>
       </nav>
       <VideoWorkspace videoId={videoId} initialTab={tab as "overview" | "engagement" | "comments" | "recommendations"} />
     </div>

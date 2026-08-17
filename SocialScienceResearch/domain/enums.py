@@ -86,6 +86,32 @@ class RecommendationStatus(StrEnum):
     FAILED = "failed"
 
 
+class GraphProjection(StrEnum):
+    """Which node type a network graph is projected onto."""
+
+    CHANNEL = "channel"
+    VIDEO = "video"
+
+
+class RelationStatus(StrEnum):
+    """Classification of nodes/edges/components against a pre-crawl snapshot.
+
+    Used by the layer-crawl report to answer "what did this crawl add?":
+    nodes/edges/channels are ``NEW_*`` relative to the pre-crawl graph,
+    components are ``CONNECTED`` when they touch existing nodes and
+    ``DISCONNECTED`` for brand-new communities. ``SKIPPED_DUPLICATE`` records
+    a re-observed edge pair (reported as a dedup count, never an error).
+    """
+
+    NEW_VIDEO = "new_video"
+    EXISTING_VIDEO = "existing_video"
+    NEW_CHANNEL = "new_channel"
+    EXISTING_CHANNEL = "existing_channel"
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+    SKIPPED_DUPLICATE = "skipped_duplicate"
+
+
 class SamplingStrategy(StrEnum):
     """Reproducible research sampling strategies."""
 

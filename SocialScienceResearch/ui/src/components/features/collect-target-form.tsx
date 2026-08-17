@@ -27,6 +27,7 @@ import {
   useSubmitCollect,
   useJob,
   useCancelJob,
+  useRuns,
 } from "@/services/queries";
 import { getJobResult } from "@/services/api";
 import type { CollectJobResult } from "@/lib/types";
@@ -475,6 +476,12 @@ function JobProgressCard({
 }
 
 function ResultSummary({ result }: { result: CollectJobResult }) {
+  const runsQuery = useRuns();
+  const runNames = new Map(
+    (runsQuery.data ?? [])
+      .filter((run) => run.name)
+      .map((run) => [run.run_id, run.name as string]),
+  );
   if (result.target_count === 1) {
     const r = result.results[0];
     return (
@@ -483,7 +490,7 @@ function ResultSummary({ result }: { result: CollectJobResult }) {
           <div className="flex items-center gap-2">
             <RunStatusBadge status={r.status} />
             <span className="font-mono text-xs text-muted-foreground">
-              {r.run_id}
+              {runNames.get(r.run_id) ?? r.run_id}
             </span>
           </div>
           <Button
@@ -532,7 +539,7 @@ function ResultSummary({ result }: { result: CollectJobResult }) {
             <div className="flex items-center justify-between gap-2">
               <RunStatusBadge status={r.status} />
               <span className="font-mono text-xs text-muted-foreground">
-                {r.run_id}
+                {runNames.get(r.run_id) ?? r.run_id}
               </span>
             </div>
             <p className="text-xs text-muted-foreground break-all">

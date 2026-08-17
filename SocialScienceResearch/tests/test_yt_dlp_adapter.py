@@ -457,6 +457,49 @@ def test_extract_recommendations_falls_back_to_page_dump(
     assert recs[1]["title"] == "Second"
 
 
+def test_extract_recommendations_survives_source_extraction_failure(
+    patch_ytdlp, monkeypatch
+) -> None:
+    """When yt-dlp cannot extract the source video (e.g. availability/region
+    gate raising ``ERROR: This video is not available``), the run must not
+    abort - the INNERTUBE fallback still returns the observed recommendations."""
+    from yt_dlp.utils import DownloadError
+
+    _FakeRecommendations.components = [
+        {"id": "up1", "title": "First", "channel": {"id": "UCx", "name": "C"}},
+        {"id": "up2"},
+    ]
+    monkeypatch.setattr(
+        "SocialScienceResearch.acquisition.yt_dlp_adapter._YT_Recommendations",
+        _FakeRecommendations,
+    )
+
+    def unavailable(url: str):
+        raise DownloadError("ERROR: [youtube] abc: This video is not available")
+
+    _FakeYoutubeDL._behavior = {"https://youtube.com/watch?v=abc": unavailable}
+    provider = _provider()
+    recs = provider.extract_recommendations("https://youtube.com/watch?v=abc")
+    assert [r["id"] for r in recs] == ["up1", "up2"]
+    assert recs[0]["channel_id"] == "UCx"
+
+
+def test_extract_recommendations_raises_unsupported_when_all_providers_fail(
+    patch_ytdlp,
+) -> None:
+    """If the source extraction fails *and* no fallback provider yields recs,
+    the run still surfaces a clear unsupported error (never fabricates)."""
+    from yt_dlp.utils import DownloadError
+
+    def unavailable(url: str):
+        raise DownloadError("ERROR: [youtube] abc: This video is not available")
+
+    _FakeYoutubeDL._behavior = {"https://youtube.com/watch?v=abc": unavailable}
+    provider = _provider()
+    with pytest.raises(RecommendationUnsupportedError):
+        provider.extract_recommendations("https://youtube.com/watch?v=abc")
+
+
 # ----------------------------------------------------------------------
 # Retry behaviour
 # ----------------------------------------------------------------------

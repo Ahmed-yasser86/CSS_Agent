@@ -12,12 +12,19 @@ import {
 import { Button } from "@/components/ui/button";
 import { EmptyState, ErrorState, LoadingState } from "@/components/features/state";
 import { useNetworkEdges } from "@/services/networkFull";
+import { useRuns } from "@/services/queries";
 import { formatNumber } from "@/lib/format";
 
 export function EdgeTable({ runId }: { runId?: string }) {
   const [cursor, setCursor] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const query = useNetworkEdges(runId, cursor ?? undefined);
+  const runsQuery = useRuns();
+  const runNames = new Map(
+    (runsQuery.data ?? [])
+      .filter((run) => run.name)
+      .map((run) => [run.run_id, run.name as string]),
+  );
 
   if (query.isLoading) return <LoadingState label="Loading edges…" />;
   if (query.isError)
@@ -95,7 +102,9 @@ export function EdgeTable({ runId }: { runId?: string }) {
                   <TableCell className="font-mono text-xs">
                     {edge.channel_id ?? "—"}
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{edge.run_id ?? "—"}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {edge.run_id ? runNames.get(edge.run_id) ?? edge.run_id : "—"}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

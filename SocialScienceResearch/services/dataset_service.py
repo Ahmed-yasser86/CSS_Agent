@@ -87,6 +87,7 @@ class DatasetService:
         member_ids: list[str] | None = None,
         criteria: dict | None = None,
         variable_selection: list[str] | None = None,
+        lineage: dict | None = None,
     ) -> Dataset:
         """Snapshot the whole ``entity_type`` population as a dataset.
 
@@ -95,10 +96,13 @@ class DatasetService:
         entity ids supplied (used to materialize a sampling result into a
         dataset). ``criteria`` (a QueryGroup dict) can further filter
         the rows. ``variable_selection`` overrides the default column set.
-        ``run_ids`` scoping is not yet implemented (rows lack first_observed_run_id).
+        ``run_ids`` scopes recommendation rows to edges observed in those runs
+        (so per-run datasets are honest slices, not whole-population
+        snapshots). ``lineage`` records the provenance of the dataset (e.g.
+        which run/action triggered its creation).
         """
         entity = self._entity(entity_type)
-        rows = self._query.resolve_latest_rows(entity)
+        rows = self._query.resolve_latest_rows(entity, run_ids=run_ids)
 
         if channel_ids:
             rows = [r for r in rows if r.get("channel_id") in channel_ids]
@@ -131,6 +135,7 @@ class DatasetService:
             member_ids=member_ids or [],
             criteria=criteria,
             variable_selection=variable_selection or [],
+            lineage=lineage,
         )
 
     def create_from_project(
@@ -319,6 +324,7 @@ class DatasetService:
         member_ids: list[str],
         criteria: dict | None,
         variable_selection: list[str],
+        lineage: dict | None = None,
     ) -> Dataset:
         id_field = _ID_FIELD[entity]
         if columns is None:
@@ -358,6 +364,7 @@ class DatasetService:
                     "member_ids": member_ids,
                 },
                 "criteria": criteria,
+                "lineage": lineage,
             },
             member_count=len(members),
             overflow=chunks > 1,

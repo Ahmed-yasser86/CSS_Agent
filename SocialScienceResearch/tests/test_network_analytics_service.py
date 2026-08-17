@@ -22,12 +22,18 @@ from SocialScienceResearch.config.settings import (
     ScraperSettings,
     SocialScienceSettings,
 )
-from SocialScienceResearch.domain.enums import RecommendationStatus
-from SocialScienceResearch.domain.models import RecommendationObservation
+from SocialScienceResearch.domain.enums import RecommendationStatus, RunType
+from SocialScienceResearch.domain.models import (
+    Channel,
+    CollectionRun,
+    RecommendationObservation,
+    Video,
+)
 from SocialScienceResearch.persistence.excel_repository import build_excel_repositories
 from SocialScienceResearch.services.network_analytics_service import (
     NetworkAnalyticsService,
 )
+from SocialScienceResearch.utils.idgen import utcnow
 
 PREFIX = "/api/v1/social-science"
 
@@ -58,8 +64,54 @@ def _seed_recommendations(repos) -> None:
         )
 
 
+def _seed_videos(repos) -> None:
+    """Persist source video rows so source-channel metadata resolves."""
+    videos = [
+        ("a", "UC1"),
+        ("b", "UC1"),
+        ("a2", "UC2"),
+        ("b2", "UC3"),
+        ("c2", "UC3"),
+        ("d2", "UC2"),
+    ]
+    for video_id, channel_id in videos:
+        repos.videos.upsert_video(
+            Video(
+                video_id=video_id,
+                url=f"https://www.youtube.com/watch?v={video_id}",
+                channel_id=channel_id,
+                title=f"Title {video_id}",
+                first_observed_run_id="net_r1",
+            )
+        )
+    for channel_id in ("UC1", "UC2", "UC3"):
+        repos.channels.upsert_channel(
+            Channel(
+                channel_id=channel_id,
+                url=f"https://www.youtube.com/channel/{channel_id}",
+                title=f"Channel {channel_id}",
+                first_observed_run_id="net_r1",
+            )
+        )
+
+
+def _seed_runs(repos) -> None:
+    """Persist run rows so the graph returns the run facet."""
+    for run_id, run_type in (("net_r1", RunType.VIDEO), ("net_r2", RunType.VIDEO)):
+        repos.runs.create_run(
+            CollectionRun(
+                run_id=run_id,
+                run_type=run_type,
+                target_url=f"https://www.youtube.com/watch?v={run_id}",
+                started_at=utcnow(),
+                status="success",
+            )
+        )
+
+
 @pytest.fixture
 def service(excel_repos) -> NetworkAnalyticsService:
+    # Remove the import that's causing issues
     _seed_recommendations(excel_repos)
     return NetworkAnalyticsService(excel_repos)
 
@@ -160,18 +212,30 @@ def test_temporal_empty_request_returns_empty(service) -> None:
 # ----------------------------------------------------------------------
 # Service: edges / export / channels
 # ----------------------------------------------------------------------
-def test_edges_lists_all_edge_dicts(service) -> None:
+def test_edges_lists_all_edge_dicts_with_metadata(service) -> None:
     edges = service.edges()
     assert len(edges) == 7
     for edge in edges:
-        assert set(edge) == {
-            "source_video_id",
-            "recommended_video_id",
-            "position",
-            "run_id",
-            "title",
-            "channel_id",
-        }
+        # Check that all expected attributes exist
+        assert hasattr(edge, "source_video_id")
+        assert hasattr(edge, "recommended_video_id")
+        assert hasattr(edge, "position")
+        assert hasattr(edge, "run_id")
+        assert hasattr(edge, "title")
+        assert hasattr(edge, "channel_id")
+        assert hasattr(edge, "thumbnail_url")
+        assert hasattr(edge, "views")
+        assert hasattr(edge, "likes")
+        assert hasattr(edge, "duration")
+        assert hasattr(edge, "run_type")
+        assert hasattr(edge, "run_name")
+        assert hasattr(edge, "source_title")
+        assert hasattr(edge, "source_channel_id")
+        assert hasattr(edge, "source_channel_name")
+
+        # Check that metadata fields are populated
+        assert edge.title is not None
+        assert edge.channel_id is not None
 
 
 def test_edges_run_filter(service) -> None:
@@ -179,12 +243,41 @@ def test_edges_run_filter(service) -> None:
     assert len(service.edges(run_id="net_r2")) == 5
 
 
+def test_edges_channel_filter_matches_source_by_default(service) -> None:
+    # Seed video rows so the SOURCE channel resolves (the researcher-facing
+    # semantic: show channel X's videos and their 1->N recommendation trees).
+    _seed_videos(service._repos)
+    assert len(service.edges(channel_id="UC1")) == 2  # a -> b, b -> a
+    assert len(service.edges(channel_id="UC2")) == 3  # a2->b2, a2->c2, d2->a2
+    assert len(service.edges(channel_id="UC3")) == 2  # b2->c2, c2->a2
+
+    assert len(service.edges(run_id="net_r2", channel_id="UC2")) == 3
+    assert len(service.edges(run_id="net_r2", channel_id="UC3")) == 2
+
+
+def test_edges_channel_filter_target_scope(service) -> None:
+    # Legacy/target semantics available via channel_scope="target".
+    assert len(service.edges(channel_id="UC1", channel_scope="target")) == 2
+    assert len(service.edges(channel_id="UC2", channel_scope="target")) == 3
+    assert len(service.edges(channel_id="UC3", channel_scope="target")) == 2
+
+
+def test_edges_channel_filter_unknown_channel_is_empty(service) -> None:
+    _seed_videos(service._repos)
+    assert service.edges(channel_id="UC_MISSING") == []
+
+
+def test_edges_run_and_channel_combined(service) -> None:
+    _seed_videos(service._repos)
+    assert len(service.edges(run_id="net_r2", channel_id="UC2")) == 3
+
+
 def test_edges_ordered_by_feed_rank_per_source(service) -> None:
     """Edges are grouped by source and ranked by feed position ascending."""
     edges = service.edges()
     for source in {"a", "b", "a2", "b2", "c2", "d2"}:
-        group = [e for e in edges if e["source_video_id"] == source]
-        positions = [e["position"] for e in group]
+        group = [e for e in edges if e.source_video_id == source]
+        positions = [e.position for e in group]
         assert positions == sorted(positions), f"{source} not feed-ranked: {positions}"
 
 
@@ -220,12 +313,167 @@ def test_export_unknown_format_raises_value_error(service) -> None:
 
 def test_channel_projection_lists_distinct_channels(service) -> None:
     projection = service.channel_projection()
-    assert projection.channels == ["UC1", "UC2", "UC3"]
+    assert [f.channel_id for f in projection.channels] == ["UC1", "UC2", "UC3"]
     assert projection.edge_count == 7
 
     projection = service.channel_projection(run_id="net_r1")
-    assert projection.channels == ["UC1"]
+    assert [f.channel_id for f in projection.channels] == ["UC1"]
     assert projection.edge_count == 2
+
+
+def test_graph_enriched_payload(service) -> None:
+    """GET /network/graph returns enriched nodes + edges + facets."""
+    _seed_videos(service._repos)
+    _seed_runs(service._repos)
+    graph = service.graph()
+    assert graph.node_count == 6
+    assert graph.edge_count == 7
+
+    by_id = {n.video_id: n for n in graph.nodes}
+    assert by_id["a"].kind == "both"  # a->b and b->a
+    assert by_id["a"].channel_id == "UC1"
+    assert by_id["a"].channel_name is not None
+    assert by_id["a"].title == "Title a"
+    assert by_id["a"].out_degree == 1
+    assert by_id["a2"].run_types == ["video"]  # provenance present
+    assert by_id["a2"].run_ids == ["net_r2"]
+    assert graph.runs  # run facet present
+    assert any(f.channel_id == "UC1" for f in graph.channels)
+    assert {e.source for e in graph.edges} == {"a", "b", "a2", "b2", "c2", "d2"}
+
+
+def test_graph_runs_facet_not_clobbered_by_edge_loop(service) -> None:
+    """run_id param must survive the edge loop (regression: shadowing bug).
+
+    The old edge loop reused ``run_id`` as a loop variable, so an all-runs
+    query (``run_id=None``) was filtered by the last edge's run id, making
+    the graph permanently pinned to a single run.
+    """
+    _seed_videos(service._repos)
+    _seed_runs(service._repos)
+    all_runs = service.graph()
+    assert len(all_runs.runs) == 2
+    assert {r["run_id"] for r in all_runs.runs} == {"net_r1", "net_r2"}
+    filtered = service.graph(run_id="net_r1")
+    assert [r["run_id"] for r in filtered.runs] == ["net_r1"]
+
+
+def test_graph_channel_filter(service) -> None:
+    _seed_videos(service._repos)
+    graph = service.graph(channel_id="UC1")
+    assert {n.video_id for n in graph.nodes} == {"a", "b"}
+
+
+def test_graph_falls_back_to_edge_channel_metadata(service) -> None:
+    """Unpersisted targets expose provider-observed channel id/name."""
+    _seed_videos(service._repos)
+    _seed_runs(service._repos)
+    repos = service._repos
+    repos.recommendations.save_recommendation(
+        RecommendationObservation(
+            observation_id="r_obs_x",
+            collection_run_id="net_r2",
+            source_video_id="a",
+            recommended_video_id="never_persisted",
+            position=0,
+            status=RecommendationStatus.OBSERVED,
+            channel_id="UC99",
+            channel_name="Edge Channel",
+            title="Edge Title",
+        )
+    )
+    graph = service.graph()
+    by_id = {n.video_id: n for n in graph.nodes}
+    node = by_id["never_persisted"]
+    assert node.channel_id == "UC99"
+    assert node.channel_name == "Edge Channel"
+    assert node.title == "Edge Title"
+    assert node.kind == "target"
+
+    rows = service.edges()
+    row = next(
+        r for r in rows if r.recommended_video_id == "never_persisted"
+    )
+    assert row.channel_id == "UC99"
+    assert row.channel_name == "Edge Channel"
+    assert row.title == "Edge Title"
+
+
+# ----------------------------------------------------------------------
+# Layer scoping (denormalized layer_index) + channel graph projection
+# ----------------------------------------------------------------------
+def _stamp_layer(service, run_id: str, layer_index: int) -> None:
+    """Re-stamp every edge of a run with ``layer_index``."""
+    repos = service._repos
+    for edge in repos.recommendations.list_recommendation_edges(run_id=run_id):
+        repos.recommendations.save_recommendation(
+            edge.model_copy(update={"layer_index": layer_index})
+        )
+
+
+def test_edges_layer_index_filter(service) -> None:
+    _stamp_layer(service, "net_r1", 1)
+    _stamp_layer(service, "net_r2", 2)
+    assert len(service.edges(layer_index=1)) == 2
+    assert len(service.edges(layer_index=2)) == 5
+    assert all(e.layer_index == 2 for e in service.edges(layer_index=2))
+
+
+def test_graph_layer_index_filter(service) -> None:
+    _stamp_layer(service, "net_r1", 1)
+    graph = service.graph(layer_index=1)
+    assert graph.edge_count == 2
+    assert graph.node_count == 2
+
+
+def test_channel_graph_aggregates_weighted_pairs(service) -> None:
+    _seed_videos(service._repos)
+    projection = service.channel_graph()
+    # a->b (UC1->UC1), b->a (UC1->UC1), a2->b2 (UC2->UC3),
+    # a2->c2 (UC2->UC3), b2->c2 (UC3->UC3), c2->a2 (UC3->UC2), d2->a2 (UC2->UC2)
+    pairs = {
+        (e.source, e.target): e.video_edge_count for e in projection.edges
+    }
+    assert pairs[("UC1", "UC1")] == 2
+    assert pairs[("UC2", "UC3")] == 2
+    assert pairs[("UC3", "UC3")] == 1
+    assert pairs[("UC3", "UC2")] == 1
+    assert pairs[("UC2", "UC2")] == 1
+    assert projection.node_count == 3
+    assert projection.unattributed_edges == 0
+
+
+def test_channel_graph_layer_scoping(service) -> None:
+    _seed_videos(service._repos)
+    _stamp_layer(service, "net_r2", 2)
+    projection = service.channel_graph(layer_index=2)
+    # net_r2 edges only: UC2->UC3 x2, UC3->UC3, UC3->UC2, UC2->UC2 -> 4 pairs.
+    assert projection.edge_count == 4
+    assert projection.node_count == 2  # UC2 + UC3 (net_r1's UC1 is excluded)
+    pairs = {
+        (e.source, e.target): e.video_edge_count for e in projection.edges
+    }
+    assert pairs == {("UC2", "UC3"): 2, ("UC3", "UC3"): 1, ("UC3", "UC2"): 1, ("UC2", "UC2"): 1}
+
+
+def test_channel_graph_counts_unattributed_edges(service) -> None:
+    _seed_videos(service._repos)
+    repos = service._repos
+    repos.recommendations.save_recommendation(
+        RecommendationObservation(
+            observation_id="r_obs_nochan",
+            collection_run_id="net_r2",
+            source_video_id="unknown_source",
+            recommended_video_id="unknown_target",
+            position=9,
+            status=RecommendationStatus.OBSERVED,
+            channel_id=None,
+        )
+    )
+    projection = service.channel_graph()
+    assert projection.unattributed_edges == 1
+    # No synthetic node: dropped edges never create channels.
+    assert projection.node_count == 3
 
 
 # ----------------------------------------------------------------------
@@ -250,7 +498,7 @@ def test_endpoint_temporal(client) -> None:
     assert body["growth"][0]["edge_growth"] == 3
 
 
-def test_endpoint_edges_pagination_envelope(client) -> None:
+def test_endpoint_edges_pagination_envelope_with_metadata(client) -> None:
     resp = client.get(f"{PREFIX}/network/edges", params={"page_size": 3})
     assert resp.status_code == 200
     body = resp.json()
@@ -259,14 +507,74 @@ def test_endpoint_edges_pagination_envelope(client) -> None:
     assert body["total"] == 7
     assert body["has_more"] is True
     assert body["next_cursor"] is not None
-    assert set(body["items"][0]) == {
+    item = body["items"][0]
+    assert set(item) >= {
         "source_video_id",
         "recommended_video_id",
         "position",
         "run_id",
         "title",
         "channel_id",
+        "thumbnail_url",
+        "views",
+        "likes",
+        "duration",
+        "run_type",
+        "run_name",
+        "source_title",
+        "source_channel_id",
+        "source_channel_name",
+        "source_thumbnail_url",
     }
+
+
+def test_endpoint_edges_channel_filter(client) -> None:
+    _seed_videos(client.app.state.services["repos"])
+    resp = client.get(
+        f"{PREFIX}/network/edges",
+        params={"channel_id": "UC1", "page_size": 50},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 2
+    assert {e["source_video_id"] for e in body["items"]} == {"a", "b"}
+
+
+def test_endpoint_graph(client) -> None:
+    _seed_videos(client.app.state.services["repos"])
+    _seed_runs(client.app.state.services["repos"])
+    resp = client.get(f"{PREFIX}/network/graph")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["node_count"] == 6
+    assert body["edge_count"] == 7
+    assert body["runs"]
+    assert any(f["channel_id"] == "UC1" for f in body["channels"])
+
+
+def test_endpoint_graph_invalid_scope_is_400(client) -> None:
+    resp = client.get(f"{PREFIX}/network/graph", params={"channel_scope": "both"})
+    assert resp.status_code == 400
+
+
+def test_endpoint_graph_channel_projection(client) -> None:
+    _seed_videos(client.app.state.services["repos"])
+    _seed_runs(client.app.state.services["repos"])
+    resp = client.get(
+        f"{PREFIX}/network/graph", params={"projection": "channel"}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["projection"] == "channel"
+    assert body["node_count"] == 3  # UC1, UC2, UC3
+    assert body["edge_count"] == 5
+    assert body["runs"]
+    assert any(f["channel_id"] == "UC1" for f in body["channels"])
+
+
+def test_endpoint_graph_invalid_projection_is_400(client) -> None:
+    resp = client.get(f"{PREFIX}/network/graph", params={"projection": "text"})
+    assert resp.status_code == 400
 
 
 def test_endpoint_edges_paginates_to_end(client) -> None:
@@ -304,5 +612,5 @@ def test_endpoint_channels(client) -> None:
     resp = client.get(f"{PREFIX}/network/channels")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["channels"] == ["UC1", "UC2", "UC3"]
+    assert [f["channel_id"] for f in body["channels"]] == ["UC1", "UC2", "UC3"]
     assert body["edge_count"] == 7

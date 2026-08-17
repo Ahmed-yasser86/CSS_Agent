@@ -18,6 +18,7 @@ from typing import Any
 import networkx as nx
 
 from SocialScienceResearch.persistence.base import Repositories
+from SocialScienceResearch.services.dataset_service import DatasetService
 
 
 @dataclass
@@ -53,7 +54,12 @@ class RecommendationGraphService:
 
     # ------------------------------------------------------------------
     def build_graph(self, run_id: str | None = None) -> nx.DiGraph:
-        """Build a directed graph from observed recommendation edges."""
+        """Build a directed graph from observed recommendation edges.
+
+        Pure read: never writes datasets or other state. Researchers who want
+        a materialized graph snapshot call :meth:`persist_graph_as_dataset`
+        explicitly.
+        """
         edges = self._repos.recommendations.list_recommendation_edges(run_id=run_id)
         graph = nx.DiGraph()
         for edge in edges:
@@ -63,8 +69,45 @@ class RecommendationGraphService:
                 position=edge.position,
                 run_id=edge.collection_run_id,
                 title=edge.title,
+                channel_id=edge.channel_id,
             )
         return graph
+
+    def persist_graph_as_dataset(self, run_id: str | None = None) -> None:
+        """Explicitly persist the current recommendation graph as a dataset.
+
+        Idempotent snapshot utility for callers that genuinely want one; the
+        read path never calls this automatically.
+        """
+        graph = self.build_graph(run_id)
+        self._persist_graph_as_dataset(graph, run_id)
+
+    def _persist_graph_as_dataset(self, graph: nx.DiGraph, run_id: str | None = None) -> None:
+        """Persist the recommendation graph as a dataset."""
+        dataset_service = DatasetService(self._repos)
+        
+        # Convert graph edges to rows for the dataset
+        rows = []
+        for source, target, data in graph.edges(data=True):
+            rows.append({
+                "source_video_id": source,
+                "recommended_video_id": target,
+                "position": data.get("position"),
+                "run_id": data.get("run_id"),
+                "title": data.get("title"),
+                "channel_id": data.get("channel_id"),
+            })
+        
+        # Create a dataset from the graph
+        dataset_service.create_dataset(
+            name=f"Recommendation Graph{' - Run ' + run_id if run_id else ''}",
+            description=f"Recommendation graph for {'run ' + run_id if run_id else 'all runs'}",
+            entity_type="recommendation",
+            include_raw=False,
+            run_ids=[run_id] if run_id else None,
+            criteria=None,
+            variable_selection=None,
+        )
 
     # ------------------------------------------------------------------
     def summary(self, run_id: str | None = None, top_n: int = 10) -> NetworkSummary:
@@ -117,26 +160,44 @@ class RecommendationGraphService:
         if graph.number_of_nodes() == 0:
             return context
 
-        context.in_degree = int(graph.in_degree(video_id))
-        context.out_degree = int(graph.out_degree(video_id))
+        # A video may be persisted in the corpus yet have no recommendation
+        # edges; ``G.in_degree(v)`` returns an ``InDegreeView`` (not an int)
+        # for a node absent from the graph, so guard the node membership.
+        context.in_degree = int(graph.in_degree(video_id)) if video_id in graph else 0
+        context.out_degree = int(graph.out_degree(video_id)) if video_id in graph else 0
         context.pagerank = round(float(nx.pagerank(graph).get(video_id, 0.0)), 6)
 
+        # Cache run_type lookups to avoid repeated repo calls
+        run_type_cache: dict[str, str | None] = {}
+        
+        def get_run_type(run_id: str | None) -> str | None:
+            if not run_id:
+                return None
+            if run_id not in run_type_cache:
+                run = self._repos.runs.get_run(run_id)
+                run_type_cache[run_id] = run.run_type.value if run else None
+            return run_type_cache[run_id]
+
         for source, _, data in graph.in_edges(video_id, data=True):
+            run_id = data.get("run_id")
             context.recommended_by.append(
                 {
                     "source_video_id": source,
                     "position": data.get("position"),
-                    "run_id": data.get("run_id"),
+                    "run_id": run_id,
                     "title": data.get("title"),
+                    "run_type": get_run_type(run_id),
                 }
             )
         for _, target, data in graph.out_edges(video_id, data=True):
+            run_id = data.get("run_id")
             context.recommends.append(
                 {
                     "recommended_video_id": target,
                     "position": data.get("position"),
-                    "run_id": data.get("run_id"),
+                    "run_id": run_id,
                     "title": data.get("title"),
+                    "run_type": get_run_type(run_id),
                 }
             )
         # Feed-rank ordering: position is the slot a recommendation occupied in

@@ -19,6 +19,7 @@ import re
 import tempfile
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from contextlib import contextmanager
 from pathlib import Path
@@ -106,6 +107,26 @@ def _channel_uploads_playlist_id(channel_id: str) -> str | None:
     """
     if channel_id.startswith("UC") and len(channel_id) == 24:
         return "UU" + channel_id[2:]
+    return None
+
+
+def _video_id_from_url(url: str) -> str | None:
+    """Best-effort YouTube video id extraction from a watch URL.
+
+    Used only to keep the recommendation fallback usable when the source
+    video's full yt-dlp extraction fails (e.g. the extractor gates on
+    availability/region), so the INNERTUBE-based fallback can still run.
+    """
+    parsed = urllib.parse.urlparse(url)
+    if parsed.netloc not in {"www.youtube.com", "youtube.com", "m.youtube.com"}:
+        return None
+    query = urllib.parse.parse_qs(parsed.query)
+    v = query.get("v")
+    if v and v[0]:
+        return v[0]
+    match = re.search(r"(?:/|v=)([A-Za-z0-9_-]{11})(?:[&?#]|$)", url)
+    if match:
+        return match.group(1)
     return None
 
 
@@ -388,7 +409,32 @@ class YtDlpAcquisitionProvider(AcquisitionProvider):
             )
         if want_comments and _is_live_or_upcoming(info):
             info["comments_unavailable"] = True
+        
+        # Ensure metadata fields are always present
+        info.setdefault("title", None)
+        info.setdefault("channel_id", None)
+        info.setdefault("thumbnail_url", None)
+        info.setdefault("view_count", None)
+        info.setdefault("like_count", None)
+        info.setdefault("duration", None)
         return info
+
+    def get_video_metadata(self, video_id: str) -> dict[str, Any]:
+        """Fetch metadata for a single video using yt-dlp."""
+        video_url = f"https://www.youtube.com/watch?v={video_id}"
+        try:
+            info = self._extract(video_url, self._base_opts())
+            return {
+                "title": info.get("title"),
+                "channel_id": info.get("channel_id"),
+                "thumbnail_url": info.get("thumbnail"),
+                "views": info.get("view_count"),
+                "likes": info.get("like_count"),
+                "duration": info.get("duration"),
+            }
+        except Exception as exc:
+            logger.warning("Failed to fetch metadata for video %s: %s", video_id, exc)
+            return {}
 
     def _extract_recommendations(self, video_url: str) -> list[dict[str, Any]]:
         """Extract observed Up Next recommendations for a video.
@@ -403,17 +449,39 @@ class YtDlpAcquisitionProvider(AcquisitionProvider):
 
         If none of the layers yields entries, ``RecommendationUnsupportedError``
         is raised exactly as before - observations are never invented.
-        """
-        info = self._extract(video_url, self._base_opts())
-        if info.get("_type") == "playlist":
-            raise InvalidURLError(
-                f"URL resolves to a playlist/channel, not a video: {video_url}"
-            )
-        entries = info.get("recommended_videos") or info.get("related") or []
-        if entries:
-            return [e for e in entries if isinstance(e, dict)]
 
-        video_id = info.get("id")
+        The source-video extraction is best-effort: when yt-dlp cannot fully
+        extract the video (e.g. it gates on availability/region while the
+        recommendations sidebar is still observable), we do *not* abort the
+        run - we fall through to the INNERTUBE ``/next`` fallback using the
+        video id parsed from the URL.
+        """
+        info: dict[str, Any] | None = None
+        try:
+            info = self._extract(video_url, self._base_opts())
+        except InvalidURLError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - degrade to fallback providers
+            logger.info(
+                "recommendations for %s: source extraction failed (%s); "
+                "falling back to recommendation providers",
+                video_url,
+                exc,
+            )
+            info = None
+
+        if info is not None:
+            if info.get("_type") == "playlist":
+                raise InvalidURLError(
+                    f"URL resolves to a playlist/channel, not a video: {video_url}"
+                )
+            entries = info.get("recommended_videos") or info.get("related") or []
+            if entries:
+                return [e for e in entries if isinstance(e, dict)]
+            video_id = info.get("id")
+        else:
+            video_id = _video_id_from_url(video_url)
+
         if video_id:
             recs = self._recommendations_via_yt_search_python(str(video_id))
             if recs:
@@ -460,8 +528,18 @@ class YtDlpAcquisitionProvider(AcquisitionProvider):
             if component.get("title"):
                 entry["title"] = component["title"]
             channel = component.get("channel")
-            if isinstance(channel, dict) and channel.get("id"):
-                entry["channel_id"] = str(channel["id"])
+            if isinstance(channel, dict):
+                if channel.get("id"):
+                    entry["channel_id"] = str(channel["id"])
+                for name_key in ("name", "title", "uploader"):
+                    name = channel.get(name_key)
+                    if isinstance(name, str) and name:
+                        entry["channel_name"] = name
+                        break
+            elif isinstance(channel, str) and channel:
+                entry["channel_name"] = channel
+            elif component.get("uploader") and isinstance(component.get("uploader"), str):
+                entry["channel_name"] = component["uploader"]
             mapped.append(entry)
         return mapped
 
@@ -477,7 +555,15 @@ class YtDlpAcquisitionProvider(AcquisitionProvider):
         with tempfile.TemporaryDirectory(prefix="ssr_upnext_") as tmp:
             with _PAGE_DUMP_LOCK:
                 with _temporary_cwd(tmp):
-                    self._extract(video_url, opts)
+                    try:
+                        self._extract(video_url, opts)
+                    except Exception as exc:  # noqa: BLE001 - fallback layer
+                        logger.debug(
+                            "up-next page dump for %s failed (%s); no recs",
+                            video_url,
+                            exc,
+                        )
+                        return []
             return scan_page_dumps(Path(tmp))
 
     def _extract_transcript(

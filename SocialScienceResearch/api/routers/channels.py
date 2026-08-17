@@ -6,6 +6,7 @@ Endpoints for listing channels with basic metadata.
 from __future__ import annotations
 
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 
 from SocialScienceResearch.api.routers.common import get_service, paginated
@@ -91,3 +92,20 @@ def list_channels(
         q_lower = q.lower()
         items = [c for c in items if q_lower in (c.title or "").lower() or q_lower in (c.handle or "").lower()]
     return paginated(items, cursor=cursor, page_size=page_size, key=_channel_key)
+
+
+@router.get(
+    "/channels/{channel_id}",
+    tags=["channels"],
+    response_model=Channel,
+)
+def get_channel(
+    channel_id: str,
+    request: Request,
+):
+    """Get a single channel's basic metadata (title, handle)."""
+    service = _channel_service(request)
+    for channel in service.list_channels():
+        if channel.channel_id == channel_id:
+            return channel
+    return JSONResponse(status_code=404, content={"detail": "Channel not found"})

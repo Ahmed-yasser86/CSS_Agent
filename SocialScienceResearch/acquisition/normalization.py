@@ -339,6 +339,30 @@ def normalize_comments(
 # ----------------------------------------------------------------------
 # Recommendations
 # ----------------------------------------------------------------------
+def _channel_name(raw: dict[str, Any]) -> str | None:
+    """Best-effort channel *name* from a recommendation entry.
+
+    yt-dlp/INNERTUBE entries carry the channel under varying keys and shapes
+    (``channel``/``uploader`` as a string name, or as a dict with ``name``/
+    ``title``/``id``). Name-only is intentionally accepted here: the stable
+    id (``channel_id``) is extracted separately and a missing id must never
+    erase an observed channel name.
+    """
+    for key in ("channel", "uploader", "channel_name", "uploader_name",
+                "channel_title", "channel_uploader"):
+        value = raw.get(key)
+        if value is None:
+            continue
+        if isinstance(value, dict):
+            for name_key in ("name", "title", "channel", "uploader"):
+                name = value.get(name_key)
+                if name and isinstance(name, str):
+                    return name
+        elif isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 def normalize_recommendations(
     source_video_id: str,
     raw_entries: list[dict[str, Any]],
@@ -367,6 +391,7 @@ def normalize_recommendations(
                 position=position,
                 status=RecommendationStatus.OBSERVED,
                 channel_id=_first(raw, "channel_id"),
+                channel_name=_channel_name(raw),
                 title=raw.get("title"),
                 observed_at=observed_at,
                 raw_json=dict(raw),

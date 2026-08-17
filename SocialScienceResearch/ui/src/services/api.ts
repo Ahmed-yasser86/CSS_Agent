@@ -316,6 +316,11 @@ export function getVideoEngagement(videoId: string): Promise<VideoEngagement> {
   return request(`/videos/${videoId}/engagement`);
 }
 
+// ---------------------------------------------------------------------------
+// Legacy / network/video endpoint removed - video navigation uses Next.js
+// page routes (/network/videos/[videoId]) instead of API calls
+// ---------------------------------------------------------------------------
+
 export function getCommentPercentiles(videoId: string): Promise<CommentPercentiles> {
   return request(`/videos/${videoId}/comments/percentiles`);
 }
@@ -342,21 +347,21 @@ export function getVideoRecommendations(videoId: string): Promise<Recommendation
   ).then((page) => page.items ?? []);
 }
 
-export function getNetworkSummary(
-  runId?: string,
-  topN = 10,
-): Promise<NetworkSummary> {
-  return request(
-    `/network/recommendations/summary${toQuery({ run_id: runId, top_n: topN })}`,
-  );
-}
-
-export function getNetworkVideoContext(
+export function getVideoNetworkContext(
   videoId: string,
   runId?: string,
 ): Promise<VideoNetworkContext> {
   return request(
     `/network/recommendations/${videoId}${toQuery({ run_id: runId })}`,
+  );
+}
+
+export function getNetworkSummary(
+  runId?: string,
+  topN = 10,
+): Promise<NetworkSummary> {
+  return request(
+    `/network/metrics${toQuery({ run_id: runId, top_n: topN })}`,
   );
 }
 

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { useChannelOverview, useChannelVideoCount, useSampleVideos } from "@/services/queries";
+import { useChannelOverview, useChannelVideoCount, useSampleVideos, useChannels } from "@/services/queries";
 import { MetricTile } from "@/components/features/metric-tile";
 import { LoadingState, ErrorState, EmptyState } from "@/components/features/state";
 import { VideoCorpusBrowser } from "@/components/features/video-corpus-browser";
@@ -29,6 +29,9 @@ export function ChannelWorkspace({
   const overviewQuery = useChannelOverview(channelId);
   const countQuery = useChannelVideoCount(channelId);
   const sampleMutation = useSampleVideos(channelId);
+  const channelsQuery = useChannels();
+  const channelTitle =
+    channelsQuery.data?.find((c) => c.channel_id === channelId)?.title ?? null;
 
   function onTabChange(value: string) {
     setTab(value as TabId);
@@ -38,8 +41,12 @@ export function ChannelWorkspace({
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-center gap-2">
-        <h1 className="text-lg font-semibold">{channelId}</h1>
-        <code className="text-xs text-muted-foreground">channel</code>
+        <h1 className="text-lg font-semibold">{channelTitle ?? channelId}</h1>
+        {channelTitle ? (
+          <code className="text-xs text-muted-foreground">channel {channelId}</code>
+        ) : (
+          <code className="text-xs text-muted-foreground">channel</code>
+        )}
       </header>
 
       <Tabs value={tab} onValueChange={onTabChange} className="w-full">

@@ -32,6 +32,7 @@ class CollectionResult:
     skipped: list[dict[str, Any]] = field(default_factory=list)
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    dataset_id: str | None = None
 
     @property
     def ok(self) -> bool:

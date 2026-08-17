@@ -1,0 +1,67 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - generic [ref=e4]:
+        - link "Social Science Research" [ref=e5] [cursor=pointer]:
+          - /url: /
+        - navigation "Primary" [ref=e10]:
+          - link "Workspace" [ref=e11] [cursor=pointer]:
+            - /url: /
+          - link "Collect" [ref=e15] [cursor=pointer]:
+            - /url: /collect
+          - link "Explorer" [ref=e20] [cursor=pointer]:
+            - /url: /explore
+          - link "Network" [ref=e26] [cursor=pointer]:
+            - /url: /network
+          - link "Samples" [ref=e33] [cursor=pointer]:
+            - /url: /samples
+          - link "Datasets" [ref=e39] [cursor=pointer]:
+            - /url: /datasets
+          - link "Projects" [ref=e43] [cursor=pointer]:
+            - /url: /projects
+          - link "Runs" [ref=e47] [cursor=pointer]:
+            - /url: /runs
+        - generic [ref=e52]:
+          - button "Switch to dark mode" [ref=e53]
+          - button "Jobs tray" [ref=e56]:
+            - generic [ref=e57]: Jobs
+          - button "Search… Ctrl K" [ref=e58]:
+            - generic [ref=e62]: Search…
+            - generic:
+              - text: Ctrl
+              - generic: K
+          - generic [ref=e63]:
+            - heading "Command Palette" [level=2] [ref=e64]
+            - paragraph [ref=e65]: Search for a command to run...
+    - main [ref=e66]:
+      - generic [ref=e68]:
+        - generic [ref=e69]:
+          - heading "Full network analytics" [level=1] [ref=e70]
+          - paragraph [ref=e76]: Density, reciprocity, degree percentiles, clustering, components, communities and HITS ranks for the whole observed recommendation network — plus per-run temporal slices, edge listings and GraphML / edgelist / GEXF exports.
+        - generic [ref=e77]:
+          - generic [ref=e79]:
+            - generic [ref=e80]:
+              - generic [ref=e81]: Network slice
+              - combobox "Select network slice run" [ref=e82]:
+                - generic [ref=e83]: All runs
+                - img: ▼
+              - textbox [ref=e84]
+            - generic [ref=e85]:
+              - link "graphml" [ref=e86] [cursor=pointer]:
+                - /url: /api/v1/social-science/network/export?format=graphml
+              - link "edgelist" [ref=e90] [cursor=pointer]:
+                - /url: /api/v1/social-science/network/export?format=edgelist
+              - link "gexf" [ref=e94] [cursor=pointer]:
+                - /url: /api/v1/social-science/network/export?format=gexf
+          - generic [ref=e98]:
+            - tablist [ref=e99]:
+              - tab "Metrics" [selected] [ref=e100]
+              - tab "Temporal" [ref=e101]
+              - tab "Edges" [ref=e102]
+              - tab "Graph" [ref=e103]
+            - tabpanel [ref=e104]:
+              - status [ref=e105]:
+                - paragraph [ref=e108]: Loading network metrics…
+    - contentinfo [ref=e109]: Computational Social Science Research Workbench · data is observed, never estimated · missing values are reported explicitly
+  - button "Open Next.js Dev Tools" [ref=e115] [cursor=pointer]
+  - alert [ref=e119]

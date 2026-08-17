@@ -52,6 +52,7 @@ from SocialScienceResearch.services import (
     RecommendationService,
     SamplingService,
 )
+from SocialScienceResearch.services.layer_scrape_service import LayerScrapeService
 from SocialScienceResearch.services.pagination import (
     CursorError,
     Paginated,
@@ -109,6 +110,32 @@ class CollectRequest(BaseModel):
     url: str
 
 
+class ScrapeRecommendationsRequest(BaseModel):
+    video_url: str
+
+
+class NetworkScrapeVideoRequest(BaseModel):
+    """Click-to-scrape one video node from the network tab."""
+
+    video_id: str
+    trigger_run_id: str | None = None
+
+
+class NetworkScrapeRunRequest(BaseModel):
+    """Bulk re-scrape of every source video observed in one run."""
+
+    run_id: str
+    dedupe: bool = True
+
+
+class NetworkScrapeChannelRequest(BaseModel):
+    """Bulk scrape of every known video belonging to a channel."""
+
+    channel_id: str
+    trigger_run_id: str | None = None
+    dedupe: bool = True
+
+
 def _services(
     settings: SocialScienceSettings, *, provider=None
 ) -> dict[str, Any]:
@@ -132,6 +159,7 @@ def _services(
         "network": RecommendationGraphService(repos),
         "quality": QualityService(repos),
         "jobs": JobManager(max_workers=settings.jobs.max_workers),
+        "layer_scrape": LayerScrapeService(provider, repos, settings=settings),
     }
 
 
@@ -166,6 +194,14 @@ def _recommendation_edge_key(edge) -> tuple[str, ...]:
     and ``None`` positions sort last (unknown rank). All keys are strings so
     cursor tokens remain comparable inside ``page_sorted``.
     """
+    if isinstance(edge, dict):
+        position = edge.get("position")
+        position_key = f"{position:08d}" if position is not None else "~"
+        return (
+            position_key,
+            edge.get("collection_run_id") or "",
+            edge.get("observation_id", ""),
+        )
     position = edge.position
     position_key = f"{position:08d}" if position is not None else "~"
     return (
@@ -187,8 +223,16 @@ def _paginate(
     page = page_sorted(
         full, cursor=cursor, page_size=page_size, key_func=key, total=len(full)
     )
+    items = []
+    for e in page.items:
+        if isinstance(e, dict):
+            items.append(e)
+        elif hasattr(e, 'model_dump'):
+            items.append(e.model_dump())
+        else:
+            items.append(e.__dict__)
     return Paginated(
-        items=[e.model_dump() for e in page.items],
+        items=items,
         next_cursor=page.next_cursor,
         has_more=page.has_more,
         total=page.total,
@@ -269,10 +313,13 @@ def create_app(
     # ------------------------------------------------------------------
     from .routers import (
         channels,
+        commenters,
         comments,
         comparison,
         datasets,
         explorer,
+        expansion,
+        layer_network,
         network_ext,
         project_items,
         samples,
@@ -280,10 +327,13 @@ def create_app(
     )
 
     app.include_router(channels.router, prefix=prefix)
+    app.include_router(commenters.router, prefix=prefix)
     app.include_router(comments.router, prefix=prefix)
     app.include_router(comparison.router, prefix=prefix)
     app.include_router(datasets.router, prefix=prefix)
     app.include_router(explorer.router, prefix=prefix)
+    app.include_router(expansion.router, prefix=prefix)
+    app.include_router(layer_network.router, prefix=prefix)
     app.include_router(network_ext.router, prefix=prefix)
     app.include_router(project_items.router, prefix=prefix)
     app.include_router(samples.router, prefix=prefix)
@@ -333,6 +383,103 @@ def create_app(
             return services["collection"].collect(spec, reporter=reporter)
 
         job = services["jobs"].submit(_worker, kind="collect")
+        return {"job_id": job.job_id}
+
+    @app.post(f"{prefix}/scrape/recommendations", tags=["collection"], response_model=JobSubmitPayload)
+    def scrape_recommendations(body: ScrapeRecommendationsRequest):
+        """Submit a recommendation scrape job for a single video.
+        
+        Runs in the background (worker thread) so the client can poll progress
+        via ``GET /jobs/{job_id}`` and cancel via ``POST /jobs/{job_id}/cancel``.
+        """
+        def _worker(reporter):
+            return services["recommendations"].collect_recommendations(body.video_url, reporter=reporter)
+
+        job = services["jobs"].submit(_worker, kind="recommendation")
+        return {"job_id": job.job_id}
+
+    @app.post(
+        f"{prefix}/network/scrape/video",
+        tags=["network"],
+        response_model=JobSubmitPayload,
+    )
+    def network_scrape_video(body: NetworkScrapeVideoRequest):
+        """Queue a recommendation scrape for a single video (graph node click)."""
+        def _worker(reporter):
+            return services["recommendations"].collect_recommendations(
+                video_url=None,
+                video_id=body.video_id,
+                parent_run_id=body.trigger_run_id,
+                reporter=reporter,
+            )
+
+        job = services["jobs"].submit(_worker, kind="recommendation")
+        return {"job_id": job.job_id}
+
+    @app.post(
+        f"{prefix}/network/scrape/run",
+        tags=["network"],
+        response_model=JobSubmitPayload,
+    )
+    def network_scrape_run(body: NetworkScrapeRunRequest):
+        """Queue a bulk re-scrape of every source video observed in one run."""
+        run = repos.runs.get_run(body.run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Run {body.run_id} not found")
+
+        def _resolve_sources() -> list[str]:
+            if run.run_type == RunType.CHANNEL:
+                return [v.video_id for v in repos.videos.list_videos_by_run(run.run_id)]
+            sources = sorted(
+                {
+                    e.source_video_id
+                    for e in repos.recommendations.list_recommendation_edges(
+                        run_id=run.run_id
+                    )
+                }
+            )
+            return sources
+
+        def _worker(reporter):
+            sources = _resolve_sources()
+            if not sources:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Run {run.run_id} has no source videos to re-scrape",
+                )
+            return services["recommendations"].collect_recommendations_for_videos(
+                sources,
+                parent_run_id=run.run_id,
+                dedupe_run_ids=[run.run_id] if body.dedupe else None,
+                reporter=reporter,
+            )
+
+        job = services["jobs"].submit(_worker, kind="recommendation")
+        return {"job_id": job.job_id}
+
+    @app.post(
+        f"{prefix}/network/scrape/channel",
+        tags=["network"],
+        response_model=JobSubmitPayload,
+    )
+    def network_scrape_channel(body: NetworkScrapeChannelRequest):
+        """Queue a bulk scrape of every known video belonging to a channel."""
+        def _worker(reporter):
+            videos = repos.videos.list_videos(channel_id=body.channel_id)
+            if not videos:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Channel {body.channel_id} has no persisted videos",
+                )
+            return services["recommendations"].collect_recommendations_for_videos(
+                [v.video_id for v in videos],
+                parent_run_id=body.trigger_run_id,
+                channel_id=body.channel_id,
+                dedupe_run_ids=[body.trigger_run_id] if (body.dedupe and body.trigger_run_id) else None,
+                reporter=reporter,
+            )
+
+        job = services["jobs"].submit(_worker, kind="recommendation")
         return {"job_id": job.job_id}
 
     @app.get(f"{prefix}/jobs", tags=["jobs"], response_model=Paginated[JobPayload])
@@ -1025,8 +1172,16 @@ def create_app(
         page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=500),
     ):
         edges = repos.recommendations.list_recommendations_for_source(video_id)
+        # Enrich with run_type from the collection run
+        enriched_edges = []
+        for edge in edges:
+            run = repos.runs.get_run(edge.collection_run_id)
+            run_type = run.run_type.value if run else None
+            edge_dict = edge.model_dump()
+            edge_dict["run_type"] = run_type
+            enriched_edges.append(edge_dict)
         return _paginate(
-            edges, cursor=cursor, page_size=page_size, key=_recommendation_edge_key
+            enriched_edges, cursor=cursor, page_size=page_size, key=_recommendation_edge_key
         )
 
     @app.get(
@@ -1148,6 +1303,7 @@ def _collection_payload(result) -> dict[str, Any]:
         "skipped": result.skipped,
         "started_at": result.started_at,
         "finished_at": result.finished_at,
+        "dataset_id": result.dataset_id,
     }
 
 

@@ -215,7 +215,7 @@ export function CommandPalette() {
               >
                 <Play className="size-3.5 text-muted-foreground" aria-hidden />
                 <span className="truncate">
-                  {run.run_id} · {run.target_url}
+                  {run.name ?? run.run_id} · {run.target_url}
                 </span>
                 <span className="ml-auto flex items-center gap-2">
                   <span className="text-xs text-muted-foreground">

@@ -24,6 +24,7 @@ import {
 import { ChartCard } from "@/components/features/charts";
 import { LoadingState, ErrorState, EmptyState } from "@/components/features/state";
 import { useNetworkTemporal } from "@/services/networkFull";
+import { useRuns } from "@/services/queries";
 import { formatNumber } from "@/lib/format";
 import { CHART_VARS } from "@/lib/colors";
 import type { TemporalResult } from "@/lib/network-full-types";
@@ -37,6 +38,14 @@ export function TemporalOverlay({
   runIds: string[];
 }) {
   const query = useNetworkTemporal(runIds);
+  const runsQuery = useRuns();
+  const runNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const run of runsQuery.data ?? []) {
+      if (run.name && !names.has(run.run_id)) names.set(run.run_id, run.name);
+    }
+    return names;
+  }, [runsQuery.data]);
 
   if (query.isLoading) return <LoadingState label="Loading temporal slices…" />;
   if (query.isError)
@@ -72,7 +81,7 @@ export function TemporalOverlay({
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={result.slices.map((slice) => ({
-                label: slice.run_id,
+                label: runNames.get(slice.run_id) ?? slice.run_id,
                 nodes: slice.node_count,
                 edges: slice.edge_count,
               }))}
@@ -98,12 +107,18 @@ export function TemporalOverlay({
         </div>
       </ChartCard>
 
-      <GrowthTable result={result} />
+      <GrowthTable result={result} runNames={runNames} />
     </div>
   );
 }
 
-function GrowthTable({ result }: { result: TemporalResult }) {
+function GrowthTable({
+  result,
+  runNames,
+}: {
+  result: TemporalResult;
+  runNames: Map<string, string>;
+}) {
   const rows = useMemo(() => {
     return result.slices.map((slice, index) => {
       const growth = result.growth[index - 1];
@@ -130,7 +145,9 @@ function GrowthTable({ result }: { result: TemporalResult }) {
           <TableBody>
             {rows.map(({ slice, growth }) => (
               <TableRow key={slice.run_id}>
-                <TableCell className="font-mono text-xs">{slice.run_id}</TableCell>
+                <TableCell className="font-mono text-xs">
+                  {runNames.get(slice.run_id) ?? slice.run_id}
+                </TableCell>
                 <TableCell className="text-right tabular-nums">{formatNumber(slice.node_count)}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatNumber(slice.edge_count)}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatNumber(slice.density)}</TableCell>

@@ -88,6 +88,264 @@
         }
       }
     },
+    "/api/v1/social-science/channels/{channel_id}": {
+      "get": {
+        "tags": [
+          "channels"
+        ],
+        "summary": "Get Channel",
+        "description": "Get a single channel's basic metadata (title, handle).",
+        "operationId": "get_channel_api_v1_social_science_channels__channel_id__get",
+        "parameters": [
+          {
+            "name": "channel_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Channel Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Channel"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/commenters/overlap": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Commenter Overlap",
+        "description": "Pairwise commenter overlap for a research scope.\n\nReturns video and/or channel projections (whichever scope was given) with\nper-entity commenter sets, pairwise Jaccard / Szymkiewicz-Simpson metrics,\nshared-commenter lists, bridge commenters, and overlap-edge rows.",
+        "operationId": "commenter_overlap_api_v1_social_science_network_commenters_overlap_get",
+        "parameters": [
+          {
+            "name": "video_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated video ids (at least one of video_ids/channel_ids)",
+              "title": "Video Ids"
+            },
+            "description": "Comma-separated video ids (at least one of video_ids/channel_ids)"
+          },
+          {
+            "name": "channel_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated channel ids (at least one of video_ids/channel_ids)",
+              "title": "Channel Ids"
+            },
+            "description": "Comma-separated channel ids (at least one of video_ids/channel_ids)"
+          },
+          {
+            "name": "metric",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "jaccard | overlap_coefficient | intersection",
+              "default": "jaccard",
+              "title": "Metric"
+            },
+            "description": "jaccard | overlap_coefficient | intersection"
+          },
+          {
+            "name": "min_entities",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Bridge-commenter entity threshold",
+              "default": 2,
+              "title": "Min Entities"
+            },
+            "description": "Bridge-commenter entity threshold"
+          },
+          {
+            "name": "min_shared",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Overlap-edge threshold (shared commenter count)",
+              "default": 1,
+              "title": "Min Shared"
+            },
+            "description": "Overlap-edge threshold (shared commenter count)"
+          },
+          {
+            "name": "top_n",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "Cap on capped lists",
+              "default": 50,
+              "title": "Top N"
+            },
+            "description": "Cap on capped lists"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommenterOverlapResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/commenters/{author_key}/profile": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Commenter Profile",
+        "description": "Per-commenter drill-down: totals, video/channel tables, evidence comments.",
+        "operationId": "commenter_profile_api_v1_social_science_network_commenters__author_key__profile_get",
+        "parameters": [
+          {
+            "name": "author_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Author Key"
+            }
+          },
+          {
+            "name": "video_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated video ids to scope the profile",
+              "title": "Video Ids"
+            },
+            "description": "Comma-separated video ids to scope the profile"
+          },
+          {
+            "name": "channel_ids",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated channel ids to scope the profile",
+              "title": "Channel Ids"
+            },
+            "description": "Comma-separated channel ids to scope the profile"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "description": "Comment history cap",
+              "default": 200,
+              "title": "Limit"
+            },
+            "description": "Comment history cap"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommenterProfile"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/social-science/videos/{video_id}/comments/analytics/participation": {
       "get": {
         "tags": [
@@ -1620,6 +1878,665 @@
         }
       }
     },
+    "/api/v1/social-science/network/expansion/scrape-video": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Expansion Scrape Video",
+        "description": "Queue a one-hop expansion of a single video (job id).\n\nPoll ``GET /jobs/{job_id}``; on success the action anchor appears in\n``GET /network/expansion`` with its auto-created Project.",
+        "operationId": "expansion_scrape_video_api_v1_social_science_network_expansion_scrape_video_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpansionScrapeVideoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSubmitPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/expansion/scrape-all": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Expansion Scrape All",
+        "description": "Queue a one-hop expansion of the current network slice (job id).\n\nThe scope is an explicit ``video_ids`` list, or a ``run_id`` whose videos/\nsources form the slice. ``ValueError`` (no scope / unknown run) maps to a\n400 by the app-level handler.",
+        "operationId": "expansion_scrape_all_api_v1_social_science_network_expansion_scrape_all_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpansionScrapeAllRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSubmitPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/expansion": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "List Expansions",
+        "description": "Paginated network-expansion actions, newest first.",
+        "operationId": "list_expansions_api_v1_social_science_network_expansion_get",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from the previous page",
+              "title": "Cursor"
+            },
+            "description": "Opaque cursor from the previous page"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_ExpansionActionPayload_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/expansion/options": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Expansion Options",
+        "description": "The default expansion filters (drives the UI filter dialog).",
+        "operationId": "expansion_options_api_v1_social_science_network_expansion_options_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScrapeFilters"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/expansion/{action_id}": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Get Expansion",
+        "description": "One network-expansion action anchor (counts, filters, project id).",
+        "operationId": "get_expansion_api_v1_social_science_network_expansion__action_id__get",
+        "parameters": [
+          {
+            "name": "action_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Action Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpansionActionPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/expansion/{action_id}/stats": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Expansion Stats",
+        "description": "Overall + per-video statistics for one expansion action.",
+        "operationId": "expansion_stats_api_v1_social_science_network_expansion__action_id__stats_get",
+        "parameters": [
+          {
+            "name": "action_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Action Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpansionStats"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/expansion/{action_id}/graph": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Expansion Graph",
+        "description": "The expansion action's graph in the requested projection.",
+        "operationId": "expansion_graph_api_v1_social_science_network_expansion__action_id__graph_get",
+        "parameters": [
+          {
+            "name": "action_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Action Id"
+            }
+          },
+          {
+            "name": "projection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "video | channel",
+              "default": "video",
+              "title": "Projection"
+            },
+            "description": "video | channel"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/NetworkGraph"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ChannelGraphPayload"
+                    }
+                  ],
+                  "title": "Response Expansion Graph Api V1 Social Science Network Expansion  Action Id  Graph Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/layer": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Bootstrap Layer",
+        "description": "Create the seed ``LayerRun`` (layer 0) from an existing run.\n\nThe frontier is the run's own videos/sources; no network work happens.\nIdempotent per seed run.",
+        "operationId": "bootstrap_layer_api_v1_social_science_network_layer_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LayerBootstrapRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayerRunPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/layer/scrape": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Layer Scrape",
+        "description": "Queue the next crawl layer as a background job.\n\nMirrors the other ``/network/scrape/*`` endpoints: submit to the job\nmanager, poll ``GET /jobs/{job_id}``, fetch the layer + relations on\nsuccess.",
+        "operationId": "layer_scrape_api_v1_social_science_network_layer_scrape_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LayerScrapeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSubmitPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/layers": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "List Layers",
+        "description": "Paginated crawl layers, newest layer first (``layer_index`` desc).",
+        "operationId": "list_layers_api_v1_social_science_network_layers_get",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from the previous page",
+              "title": "Cursor"
+            },
+            "description": "Opaque cursor from the previous page"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_LayerRunPayload_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/layer/{layer_run_id}": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Get Layer",
+        "description": "One crawl layer anchor (frontier, discovered ids, run ids, counts).",
+        "operationId": "get_layer_api_v1_social_science_network_layer__layer_run_id__get",
+        "parameters": [
+          {
+            "name": "layer_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Layer Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayerRunPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/layer/{layer_run_id}/relations": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Layer Relations",
+        "description": "The NewRelationsReport (what did this crawl add?) for a layer.",
+        "operationId": "layer_relations_api_v1_social_science_network_layer__layer_run_id__relations_get",
+        "parameters": [
+          {
+            "name": "layer_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Layer Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewRelationsReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/layer/{layer_run_id}/graph": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Layer Graph",
+        "description": "The layer's graph in the requested projection.\n\nLayer 0 (a seed with no scraped edges) is served as the seed run's slice\n(``run_id`` scoping); deeper layers are scoped by ``layer_index`` so the\nresearcher sees exactly what that crawl added.",
+        "operationId": "layer_graph_api_v1_social_science_network_layer__layer_run_id__graph_get",
+        "parameters": [
+          {
+            "name": "layer_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Layer Run Id"
+            }
+          },
+          {
+            "name": "projection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "video | channel",
+              "default": "video",
+              "title": "Projection"
+            },
+            "description": "video | channel"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/NetworkGraph"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ChannelGraphPayload"
+                    }
+                  ],
+                  "title": "Response Layer Graph Api V1 Social Science Network Layer  Layer Run Id  Graph Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/layer/{layer_run_id}/frontier": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Layer Frontier",
+        "description": "The frontier of a layer (drives the UI layer stepper).",
+        "operationId": "layer_frontier_api_v1_social_science_network_layer__layer_run_id__frontier_get",
+        "parameters": [
+          {
+            "name": "layer_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Layer Run Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LayerFrontier"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/social-science/network/metrics": {
       "get": {
         "tags": [
@@ -1665,6 +2582,106 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NetworkMetrics"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/graph": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Network Graph",
+        "description": "Enriched node/edge payload for the interactive graph UI.\n\nNodes carry composite labels (``[ID] + Channel Name + Video Title +\nthumbnails/metrics``) plus degree/kind/provenance; the response includes\nrun and channel facets so the filter bar never derives options from the\nrendered graph. ``projection=channel`` collapses the video network into\na channel-level graph (channels as nodes, weighted edges between them).",
+        "operationId": "network_graph_api_v1_social_science_network_graph_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter edges by channel_id",
+              "title": "Channel Id"
+            },
+            "description": "Filter edges by channel_id"
+          },
+          {
+            "name": "channel_scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Which edge endpoint a channel filter matches: source|target|either",
+              "default": "source",
+              "title": "Channel Scope"
+            },
+            "description": "Which edge endpoint a channel filter matches: source|target|either"
+          },
+          {
+            "name": "projection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Graph projection: video | channel",
+              "default": "video",
+              "title": "Projection"
+            },
+            "description": "Graph projection: video | channel"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/NetworkGraph"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ChannelGraphPayload"
+                    }
+                  ],
+                  "title": "Response Network Graph Api V1 Social Science Network Graph Get"
                 }
               }
             }
@@ -1734,7 +2751,7 @@
           "network"
         ],
         "summary": "Network Edges",
-        "description": "Cursor-paginated list of observed recommendation edges.",
+        "description": "Cursor-paginated list of observed recommendation edges.\n\nSupports filtering by `run_id` and `channel_id` (source channel by default).",
         "operationId": "network_edges_api_v1_social_science_network_edges_get",
         "parameters": [
           {
@@ -1752,6 +2769,36 @@
               ],
               "title": "Run Id"
             }
+          },
+          {
+            "name": "channel_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter edges by channel_id",
+              "title": "Channel Id"
+            },
+            "description": "Filter edges by channel_id"
+          },
+          {
+            "name": "channel_scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Which edge endpoint a channel filter matches: source|target|either",
+              "default": "source",
+              "title": "Channel Scope"
+            },
+            "description": "Which edge endpoint a channel filter matches: source|target|either"
           },
           {
             "name": "cursor",
@@ -2959,6 +4006,174 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CollectionSpec"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSubmitPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/scrape/recommendations": {
+      "post": {
+        "tags": [
+          "collection"
+        ],
+        "summary": "Scrape Recommendations",
+        "description": "Submit a recommendation scrape job for a single video.\n\nRuns in the background (worker thread) so the client can poll progress\nvia ``GET /jobs/{job_id}`` and cancel via ``POST /jobs/{job_id}/cancel``.",
+        "operationId": "scrape_recommendations_api_v1_social_science_scrape_recommendations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScrapeRecommendationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSubmitPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/scrape/video": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Network Scrape Video",
+        "description": "Queue a recommendation scrape for a single video (graph node click).",
+        "operationId": "network_scrape_video_api_v1_social_science_network_scrape_video_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkScrapeVideoRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSubmitPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/scrape/run": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Network Scrape Run",
+        "description": "Queue a bulk re-scrape of every source video observed in one run.",
+        "operationId": "network_scrape_run_api_v1_social_science_network_scrape_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkScrapeRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobSubmitPayload"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/scrape/channel": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Network Scrape Channel",
+        "description": "Queue a bulk scrape of every known video belonging to a channel.",
+        "operationId": "network_scrape_channel_api_v1_social_science_network_scrape_channel_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkScrapeChannelRequest"
               }
             }
           },
@@ -5484,6 +6699,88 @@
         "title": "AuthorCommentCount",
         "description": "Comment counts for one distinct author."
       },
+      "BridgeCommenter": {
+        "properties": {
+          "author_key": {
+            "type": "string",
+            "title": "Author Key"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "identity_kind": {
+            "type": "string",
+            "title": "Identity Kind"
+          },
+          "entity_count": {
+            "type": "integer",
+            "title": "Entity Count",
+            "default": 0
+          },
+          "comment_count": {
+            "type": "integer",
+            "title": "Comment Count",
+            "default": 0
+          },
+          "video_count": {
+            "type": "integer",
+            "title": "Video Count",
+            "default": 0
+          },
+          "channel_count": {
+            "type": "integer",
+            "title": "Channel Count",
+            "default": 0
+          },
+          "entities": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Entities"
+          },
+          "first_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen At"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "author_key",
+          "identity_kind"
+        ],
+        "title": "BridgeCommenter"
+      },
       "Channel": {
         "properties": {
           "channel_id": {
@@ -5598,6 +6895,214 @@
           "count"
         ],
         "title": "ChannelCountPayload"
+      },
+      "ChannelFacet": {
+        "properties": {
+          "channel_id": {
+            "type": "string",
+            "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "channel_id"
+        ],
+        "title": "ChannelFacet",
+        "description": "A distinct channel observed on the network slice (id + name)."
+      },
+      "ChannelGraphEdge": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "video_edge_count": {
+            "type": "integer",
+            "title": "Video Edge Count",
+            "default": 0
+          },
+          "run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Ids",
+            "default": []
+          },
+          "sample_video_pairs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Sample Video Pairs",
+            "default": []
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "source",
+          "target"
+        ],
+        "title": "ChannelGraphEdge",
+        "description": "One channel-projection edge: weighted aggregation of video edges A->B.\n\n``video_edge_count`` counts the underlying video-level edges;\n``sample_video_pairs`` holds the first few ``{source_video_id,\nrecommended_video_id, position}`` pairs as evidence."
+      },
+      "ChannelGraphNode": {
+        "properties": {
+          "channel_id": {
+            "type": "string",
+            "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "subscriber_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscriber Count"
+          },
+          "video_count": {
+            "type": "integer",
+            "title": "Video Count",
+            "default": 0
+          },
+          "in_degree": {
+            "type": "integer",
+            "title": "In Degree",
+            "default": 0
+          },
+          "out_degree": {
+            "type": "integer",
+            "title": "Out Degree",
+            "default": 0
+          },
+          "run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Ids",
+            "default": []
+          },
+          "run_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Types",
+            "default": []
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "channel_id"
+        ],
+        "title": "ChannelGraphNode",
+        "description": "One channel-projection node (doc ``analysis_next_layer_scrape.md`` \u00a74.2).\n\n``video_count`` counts the distinct videos of this channel in the slice;\n``in_degree``/``out_degree`` count distinct channel neighbours; provenance\n(``run_ids``/``run_types``) mirrors ``GraphNode``."
+      },
+      "ChannelGraphPayload": {
+        "properties": {
+          "projection": {
+            "type": "string",
+            "title": "Projection",
+            "default": "channel"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelGraphNode"
+            },
+            "type": "array",
+            "title": "Nodes",
+            "default": []
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelGraphEdge"
+            },
+            "type": "array",
+            "title": "Edges",
+            "default": []
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelFacet"
+            },
+            "type": "array",
+            "title": "Channels",
+            "default": []
+          },
+          "runs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Runs",
+            "default": []
+          },
+          "node_count": {
+            "type": "integer",
+            "title": "Node Count",
+            "default": 0
+          },
+          "edge_count": {
+            "type": "integer",
+            "title": "Edge Count",
+            "default": 0
+          },
+          "unattributed_edges": {
+            "type": "integer",
+            "title": "Unattributed Edges",
+            "default": 0
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "ChannelGraphPayload",
+        "description": "Channel-projection graph payload (doc \u00a74.2).\n\n``channels`` carries the ``ChannelFacet`` list plus ``unattributed_edges``\nin a facet's metadata dict when present (edges dropped because either\nendpoint's channel could not be resolved are counted, never synthetic)."
       },
       "ChannelHistoryPoint": {
         "properties": {
@@ -5851,7 +7356,7 @@
         "properties": {
           "channels": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/ChannelFacet"
             },
             "type": "array",
             "title": "Channels",
@@ -5866,7 +7371,7 @@
         "additionalProperties": true,
         "type": "object",
         "title": "ChannelProjection",
-        "description": "Lightweight channel-level projection (documented in the module doc).\n\nRecommendation edges carry a single ``channel_id`` (the channel of the\nrecommended video, per ``RecommendationObservation``). ``channels`` lists\nthe distinct ids observed on edges and ``edge_count`` counts the edges\ncarrying a channel attribution. This is intentionally a lightweight\nprojection - no inter-channel co-occurrence graph is built."
+        "description": "Lightweight channel-level projection (documented in the module doc).\n\n``channels`` lists the distinct channels observed on edges (with their\nresolved names when a ``Channel`` row exists) and ``edge_count`` counts\nthe edges carrying a channel attribution."
       },
       "CohortBody": {
         "properties": {
@@ -6407,6 +7912,17 @@
               }
             ],
             "title": "Scrape Live Only"
+          },
+          "scrape_recommendations": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scrape Recommendations"
           }
         },
         "additionalProperties": false,
@@ -6715,6 +8231,225 @@
         "title": "CommentTreePayload",
         "description": "Full comment tree with nested replies for a root comment."
       },
+      "CommenterOverlapResult": {
+        "properties": {
+          "scope": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Scope"
+          },
+          "metric": {
+            "type": "string",
+            "title": "Metric",
+            "default": "jaccard"
+          },
+          "videos": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommenterProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "channels": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CommenterProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "global_summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Global Summary"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "CommenterOverlapResult"
+      },
+      "CommenterProfile": {
+        "properties": {
+          "author_key": {
+            "type": "string",
+            "title": "Author Key"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "identity_kind": {
+            "type": "string",
+            "title": "Identity Kind"
+          },
+          "total_comments": {
+            "type": "integer",
+            "title": "Total Comments",
+            "default": 0
+          },
+          "video_count": {
+            "type": "integer",
+            "title": "Video Count",
+            "default": 0
+          },
+          "channel_count": {
+            "type": "integer",
+            "title": "Channel Count",
+            "default": 0
+          },
+          "is_author": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Author"
+          },
+          "first_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen At"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "videos": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileVideoRow"
+            },
+            "type": "array",
+            "title": "Videos"
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileChannelRow"
+            },
+            "type": "array",
+            "title": "Channels"
+          },
+          "comments": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileComment"
+            },
+            "type": "array",
+            "title": "Comments"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "author_key",
+          "identity_kind"
+        ],
+        "title": "CommenterProfile"
+      },
+      "CommenterProjection": {
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/OverlapEntity"
+            },
+            "type": "array",
+            "title": "Entities"
+          },
+          "pairs": {
+            "items": {
+              "$ref": "#/components/schemas/PairOverlap"
+            },
+            "type": "array",
+            "title": "Pairs"
+          },
+          "heatmap": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "object"
+            },
+            "type": "object",
+            "title": "Heatmap"
+          },
+          "overlap_edges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Overlap Edges"
+          },
+          "bridge_commenters": {
+            "items": {
+              "$ref": "#/components/schemas/BridgeCommenter"
+            },
+            "type": "array",
+            "title": "Bridge Commenters"
+          },
+          "top_shared_commenters": {
+            "items": {
+              "$ref": "#/components/schemas/TopSharedCommenter"
+            },
+            "type": "array",
+            "title": "Top Shared Commenters"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ProjectionSummary"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "entity_type",
+          "summary"
+        ],
+        "title": "CommenterProjection"
+      },
       "ComparisonMetricRow": {
         "properties": {
           "entity_id": {
@@ -6806,6 +8541,45 @@
         ],
         "title": "ComparisonMetricRow",
         "description": "One (entity, metric) cell of a comparison table.\n\n``value`` is the raw latest-observed value; ``normalized`` is the value\nafter the chosen normalization; ``percentile_rank`` ranks the normalized\nvalue within the compared set; ``is_outlier`` flags ``|z| > 3``."
+      },
+      "ComponentSummary": {
+        "properties": {
+          "component_id": {
+            "type": "string",
+            "title": "Component Id"
+          },
+          "node_count": {
+            "type": "integer",
+            "title": "Node Count"
+          },
+          "edge_count": {
+            "type": "integer",
+            "title": "Edge Count"
+          },
+          "touches_channels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Touches Channels"
+          },
+          "node_video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Node Video Ids"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "component_id",
+          "node_count",
+          "edge_count"
+        ],
+        "title": "ComponentSummary",
+        "description": "One connected component of a layer's new-edge subgraph."
       },
       "CoverageReport": {
         "properties": {
@@ -7568,6 +9342,119 @@
             ],
             "title": "Run Id"
           },
+          "run_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Type"
+          },
+          "run_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Name"
+          },
+          "observed_at": {
+            "title": "Observed At"
+          },
+          "layer_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layer Index"
+          },
+          "source_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Title"
+          },
+          "source_channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Channel Id"
+          },
+          "source_channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Channel Name"
+          },
+          "source_thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Thumbnail Url"
+          },
+          "source_views": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Views"
+          },
+          "source_likes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Likes"
+          },
+          "source_duration": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Duration"
+          },
           "title": {
             "anyOf": [
               {
@@ -7589,6 +9476,61 @@
               }
             ],
             "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
+          },
+          "views": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Views"
+          },
+          "likes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Likes"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
           }
         },
         "additionalProperties": true,
@@ -7598,7 +9540,7 @@
           "recommended_video_id"
         ],
         "title": "EdgeRow",
-        "description": "One serialized recommendation edge for listing / export."
+        "description": "One serialized recommendation edge for listing / export.\n\nCarries metadata for BOTH endpoint videos so the UI can render composite\nlabels (``[ID] + Channel Name + Video Title + metrics``) without a second\nround-trip. Target fields also fall back to the observation row's own\n``title``/``channel_id`` (populated at scrape time)."
       },
       "EntityComparison": {
         "properties": {
@@ -7704,6 +9646,283 @@
         ],
         "title": "EntityRunDelta",
         "description": "Per-entity diff between two run snapshots."
+      },
+      "ExistingVideoEntry": {
+        "properties": {
+          "video_id": {
+            "type": "string",
+            "title": "Video Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "video_id"
+        ],
+        "title": "ExistingVideoEntry",
+        "description": "One existing video referenced by the layer (classification info)."
+      },
+      "ExpansionActionPayload": {
+        "properties": {
+          "action_id": {
+            "type": "string",
+            "title": "Action Id"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "parent_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Run Id"
+          },
+          "projection": {
+            "type": "string",
+            "title": "Projection"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Video Ids"
+          },
+          "discovered_video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Discovered Video Ids"
+          },
+          "run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Ids"
+          },
+          "comments_collected": {
+            "type": "integer",
+            "title": "Comments Collected",
+            "default": 0
+          },
+          "summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Summary"
+          },
+          "filters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Filters"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "action_id",
+          "kind",
+          "projection",
+          "status",
+          "started_at"
+        ],
+        "title": "ExpansionActionPayload",
+        "description": "API serialization of a network-expansion action anchor.\n\nAn expansion action reuses the :class:`LayerRun` store with\n``config_json[\"expansion\"]`` marking the kind / filters / auto-project; the\npayload flattens those fields for the UI."
+      },
+      "ExpansionOverallStats": {
+        "properties": {
+          "node_count": {
+            "type": "integer",
+            "title": "Node Count"
+          },
+          "edge_count": {
+            "type": "integer",
+            "title": "Edge Count"
+          },
+          "channel_count": {
+            "type": "integer",
+            "title": "Channel Count"
+          },
+          "source_count": {
+            "type": "integer",
+            "title": "Source Count"
+          },
+          "component_count": {
+            "type": "integer",
+            "title": "Component Count"
+          },
+          "avg_out_degree": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Out Degree"
+          },
+          "density": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Density"
+          },
+          "comment_count": {
+            "type": "integer",
+            "title": "Comment Count",
+            "default": 0
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "node_count",
+          "edge_count",
+          "channel_count",
+          "source_count",
+          "component_count"
+        ],
+        "title": "ExpansionOverallStats",
+        "description": "Overall (global) statistics over an expansion action's subgraph."
+      },
+      "ExpansionScrapeAllRequest": {
+        "properties": {
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Video Ids"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ScrapeFilters"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExpansionScrapeAllRequest",
+        "description": "Body for ``POST .../network/expansion/scrape-all``.\n\nOne-hop expansion of the current network slice: either an explicit\n``video_ids`` list or a ``run_id`` whose videos/sources form the scope."
+      },
+      "ExpansionScrapeVideoRequest": {
+        "properties": {
+          "video_id": {
+            "type": "string",
+            "title": "Video Id"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/ScrapeFilters"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "video_id"
+        ],
+        "title": "ExpansionScrapeVideoRequest",
+        "description": "Body for ``POST .../network/expansion/scrape-video``.\n\nOne-hop expansion of a single video; ``filters`` controls what is scraped\nfrom its recommendations."
+      },
+      "ExpansionStats": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ExpansionActionPayload"
+          },
+          "overall": {
+            "$ref": "#/components/schemas/ExpansionOverallStats"
+          },
+          "videos": {
+            "items": {
+              "$ref": "#/components/schemas/VideoExpansionStats"
+            },
+            "type": "array",
+            "title": "Videos"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "action",
+          "overall"
+        ],
+        "title": "ExpansionStats",
+        "description": "Overall + per-video stats for one network-expansion action."
       },
       "ExploreResult": {
         "properties": {
@@ -7829,6 +10048,215 @@
         ],
         "title": "ExportResponse",
         "description": "Response for export endpoint (file download handled separately)."
+      },
+      "GraphEdge": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "run_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Type"
+          },
+          "run_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Name"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "source",
+          "target"
+        ],
+        "title": "GraphEdge",
+        "description": "One enriched graph edge (provenance + role of the recommendation)."
+      },
+      "GraphNode": {
+        "properties": {
+          "video_id": {
+            "type": "string",
+            "title": "Video Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
+          },
+          "views": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Views"
+          },
+          "likes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Likes"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "default": "other"
+          },
+          "in_degree": {
+            "type": "integer",
+            "title": "In Degree",
+            "default": 0
+          },
+          "out_degree": {
+            "type": "integer",
+            "title": "Out Degree",
+            "default": 0
+          },
+          "run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Ids",
+            "default": []
+          },
+          "run_types": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Types",
+            "default": []
+          },
+          "community_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Community Id"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "video_id"
+        ],
+        "title": "GraphNode",
+        "description": "One enriched network node for the interactive graph.\n\n``kind`` describes the node's structural role: ``source`` (out-edges only),\n``target`` (in-edges only), ``both`` or ``other``. ``runs``/``run_types``\nlist the provenance of the edges touching this node."
       },
       "HTTPValidationError": {
         "properties": {
@@ -8137,6 +10565,17 @@
               }
             ],
             "title": "Finished At"
+          },
+          "dataset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Id"
           }
         },
         "additionalProperties": true,
@@ -8157,6 +10596,210 @@
           "job_id"
         ],
         "title": "JobSubmitPayload"
+      },
+      "LayerBootstrapRequest": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "projection": {
+            "type": "string",
+            "title": "Projection",
+            "default": "video"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "run_id"
+        ],
+        "title": "LayerBootstrapRequest",
+        "description": "Body for ``POST .../network/layer`` (``extra=\"forbid\"``).\n\nCreates the seed ``LayerRun`` (layer 0) from an existing run whose videos/\nsources become the crawl frontier."
+      },
+      "LayerFrontier": {
+        "properties": {
+          "layer_index": {
+            "type": "integer",
+            "title": "Layer Index"
+          },
+          "video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Video Ids"
+          },
+          "video_count": {
+            "type": "integer",
+            "title": "Video Count",
+            "default": 0
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "layer_index"
+        ],
+        "title": "LayerFrontier",
+        "description": "The frontier of a layer (drives the layer stepper UI)."
+      },
+      "LayerRunPayload": {
+        "properties": {
+          "layer_run_id": {
+            "type": "string",
+            "title": "Layer Run Id"
+          },
+          "layer_index": {
+            "type": "integer",
+            "title": "Layer Index"
+          },
+          "parent_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Run Id"
+          },
+          "parent_layer_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Layer Run Id"
+          },
+          "projection": {
+            "type": "string",
+            "title": "Projection"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "frontier_video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Frontier Video Ids"
+          },
+          "discovered_video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Discovered Video Ids"
+          },
+          "run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Ids"
+          },
+          "comments_collected": {
+            "type": "integer",
+            "title": "Comments Collected",
+            "default": 0
+          },
+          "summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Summary"
+          },
+          "config_json": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config Json"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "layer_run_id",
+          "layer_index",
+          "projection",
+          "status",
+          "started_at"
+        ],
+        "title": "LayerRunPayload",
+        "description": "API serialization of :class:`LayerRun` (doc \u00a76 payloads)."
+      },
+      "LayerScrapeRequest": {
+        "properties": {
+          "parent_layer_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Layer Run Id"
+          },
+          "parent_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Run Id"
+          },
+          "projection": {
+            "type": "string",
+            "title": "Projection",
+            "default": "video"
+          },
+          "collect_comments": {
+            "type": "boolean",
+            "title": "Collect Comments",
+            "default": true
+          },
+          "concurrency": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concurrency"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "LayerScrapeRequest",
+        "description": "Body for ``POST .../network/layer/scrape`` (``extra=\"forbid\"``).\n\nEither ``parent_layer_run_id`` (advance an existing crawl) or a seed\n``parent_run_id`` (start layer 1) is required. ``projection`` selects the\ngraph view; ``collect_comments`` toggles comment enrichment for new videos."
       },
       "MetricDelta": {
         "properties": {
@@ -8268,6 +10911,57 @@
         ],
         "title": "MetricStat",
         "description": "Mean/median of one metric over an entity set with provenance."
+      },
+      "NetworkGraph": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            },
+            "type": "array",
+            "title": "Nodes",
+            "default": []
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            },
+            "type": "array",
+            "title": "Edges",
+            "default": []
+          },
+          "runs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Runs",
+            "default": []
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelFacet"
+            },
+            "type": "array",
+            "title": "Channels",
+            "default": []
+          },
+          "node_count": {
+            "type": "integer",
+            "title": "Node Count",
+            "default": 0
+          },
+          "edge_count": {
+            "type": "integer",
+            "title": "Edge Count",
+            "default": 0
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "NetworkGraph",
+        "description": "Full graph payload: enriched nodes + edges + run/channel facets.\n\nServed by ``GET /network/graph`` so the UI renders readable nodes\n(``[ID] + Channel Name + Video Title + metrics``) and populates the\nrun/channel filter dropdowns from real facets - never from the rendered\ngraph."
       },
       "NetworkMetrics": {
         "properties": {
@@ -8398,6 +11092,80 @@
         "title": "NetworkMetrics",
         "description": "Aggregate statistics for one recommendation-network slice."
       },
+      "NetworkScrapeChannelRequest": {
+        "properties": {
+          "channel_id": {
+            "type": "string",
+            "title": "Channel Id"
+          },
+          "trigger_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Run Id"
+          },
+          "dedupe": {
+            "type": "boolean",
+            "title": "Dedupe",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "channel_id"
+        ],
+        "title": "NetworkScrapeChannelRequest",
+        "description": "Bulk scrape of every known video belonging to a channel."
+      },
+      "NetworkScrapeRunRequest": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "dedupe": {
+            "type": "boolean",
+            "title": "Dedupe",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id"
+        ],
+        "title": "NetworkScrapeRunRequest",
+        "description": "Bulk re-scrape of every source video observed in one run."
+      },
+      "NetworkScrapeVideoRequest": {
+        "properties": {
+          "video_id": {
+            "type": "string",
+            "title": "Video Id"
+          },
+          "trigger_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Run Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "video_id"
+        ],
+        "title": "NetworkScrapeVideoRequest",
+        "description": "Click-to-scrape one video node from the network tab."
+      },
       "NetworkSlice": {
         "properties": {
           "run_id": {
@@ -8492,6 +11260,188 @@
         "additionalProperties": true,
         "type": "object",
         "title": "NetworkSummaryPayload"
+      },
+      "NewChannelEntry": {
+        "properties": {
+          "channel_id": {
+            "type": "string",
+            "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "channel_id"
+        ],
+        "title": "NewChannelEntry",
+        "description": "One newly discovered channel in a NewRelationsReport."
+      },
+      "NewRelationsReport": {
+        "properties": {
+          "layer_run_id": {
+            "type": "string",
+            "title": "Layer Run Id"
+          },
+          "layer_index": {
+            "type": "integer",
+            "title": "Layer Index"
+          },
+          "projection": {
+            "type": "string",
+            "title": "Projection"
+          },
+          "generated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Generated At"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts"
+          },
+          "new_videos": {
+            "items": {
+              "$ref": "#/components/schemas/NewVideoEntry"
+            },
+            "type": "array",
+            "title": "New Videos"
+          },
+          "existing_videos": {
+            "items": {
+              "$ref": "#/components/schemas/ExistingVideoEntry"
+            },
+            "type": "array",
+            "title": "Existing Videos"
+          },
+          "new_channels": {
+            "items": {
+              "$ref": "#/components/schemas/NewChannelEntry"
+            },
+            "type": "array",
+            "title": "New Channels"
+          },
+          "connected_components": {
+            "items": {
+              "$ref": "#/components/schemas/ComponentSummary"
+            },
+            "type": "array",
+            "title": "Connected Components"
+          },
+          "disconnected_components": {
+            "items": {
+              "$ref": "#/components/schemas/ComponentSummary"
+            },
+            "type": "array",
+            "title": "Disconnected Components"
+          },
+          "sample_edges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Sample Edges"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "layer_run_id",
+          "layer_index",
+          "projection",
+          "generated_at"
+        ],
+        "title": "NewRelationsReport",
+        "description": "The \"what did this crawl add?\" classification report (doc \u00a75.4).\n\n``counts`` is authoritative; every list is capped so a large layer does\nnot produce a megabyte response (caps documented per field)."
+      },
+      "NewVideoEntry": {
+        "properties": {
+          "video_id": {
+            "type": "string",
+            "title": "Video Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          },
+          "thumbnail_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail Url"
+          },
+          "classification": {
+            "type": "string",
+            "title": "Classification",
+            "default": "new_video"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "video_id"
+        ],
+        "title": "NewVideoEntry",
+        "description": "One newly discovered video in a NewRelationsReport."
       },
       "Normalization": {
         "type": "string",
@@ -8627,6 +11577,90 @@
         ],
         "title": "OutlierSummary",
         "description": "Per-metric outlier report (flag, never drop)."
+      },
+      "OverlapEntity": {
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "title": "Entity Id"
+          },
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          },
+          "commenter_count": {
+            "type": "integer",
+            "title": "Commenter Count",
+            "default": 0
+          },
+          "comment_count": {
+            "type": "integer",
+            "title": "Comment Count",
+            "default": 0
+          },
+          "identity_coverage": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Coverage"
+          },
+          "avg_jaccard": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Jaccard"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "entity_id",
+          "entity_type"
+        ],
+        "title": "OverlapEntity"
       },
       "Paginated_ChannelHistoryPoint_": {
         "properties": {
@@ -8936,6 +11970,50 @@
         ],
         "title": "Paginated[EdgeRow]"
       },
+      "Paginated_ExpansionActionPayload_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExpansionActionPayload"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Paginated[ExpansionActionPayload]"
+      },
       "Paginated_JobPayload_": {
         "properties": {
           "items": {
@@ -8979,6 +12057,50 @@
           "items"
         ],
         "title": "Paginated[JobPayload]"
+      },
+      "Paginated_LayerRunPayload_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LayerRunPayload"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "Paginated[LayerRunPayload]"
       },
       "Paginated_Project_": {
         "properties": {
@@ -9420,6 +12542,100 @@
         ],
         "title": "Paginated[str]"
       },
+      "PairOverlap": {
+        "properties": {
+          "entity_a": {
+            "type": "string",
+            "title": "Entity A"
+          },
+          "entity_b": {
+            "type": "string",
+            "title": "Entity B"
+          },
+          "set_size_a": {
+            "type": "integer",
+            "title": "Set Size A",
+            "default": 0
+          },
+          "set_size_b": {
+            "type": "integer",
+            "title": "Set Size B",
+            "default": 0
+          },
+          "intersection_size": {
+            "type": "integer",
+            "title": "Intersection Size",
+            "default": 0
+          },
+          "union_size": {
+            "type": "integer",
+            "title": "Union Size",
+            "default": 0
+          },
+          "unique_a": {
+            "type": "integer",
+            "title": "Unique A",
+            "default": 0
+          },
+          "unique_b": {
+            "type": "integer",
+            "title": "Unique B",
+            "default": 0
+          },
+          "jaccard": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jaccard"
+          },
+          "overlap_coefficient": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overlap Coefficient"
+          },
+          "reach_overlap_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reach Overlap Pct"
+          },
+          "shared_commenters": {
+            "items": {
+              "$ref": "#/components/schemas/SharedCommenter"
+            },
+            "type": "array",
+            "title": "Shared Commenters"
+          },
+          "total_shared": {
+            "type": "integer",
+            "title": "Total Shared",
+            "default": 0
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "entity_a",
+          "entity_b"
+        ],
+        "title": "PairOverlap"
+      },
       "PairwiseOverlap": {
         "properties": {
           "intersection_size": {
@@ -9749,6 +12965,257 @@
         "title": "PeriodSummary",
         "description": "One upload-date (or joined-date) window and its metric stats."
       },
+      "ProfileChannelRow": {
+        "properties": {
+          "channel_id": {
+            "type": "string",
+            "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          },
+          "comment_count": {
+            "type": "integer",
+            "title": "Comment Count",
+            "default": 0
+          },
+          "video_count": {
+            "type": "integer",
+            "title": "Video Count",
+            "default": 0
+          },
+          "root_count": {
+            "type": "integer",
+            "title": "Root Count",
+            "default": 0
+          },
+          "reply_count": {
+            "type": "integer",
+            "title": "Reply Count",
+            "default": 0
+          },
+          "first_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen At"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "channel_id"
+        ],
+        "title": "ProfileChannelRow"
+      },
+      "ProfileComment": {
+        "properties": {
+          "comment_id": {
+            "type": "string",
+            "title": "Comment Id"
+          },
+          "video_id": {
+            "type": "string",
+            "title": "Video Id"
+          },
+          "comment_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Text"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "is_reply": {
+            "type": "boolean",
+            "title": "Is Reply",
+            "default": false
+          },
+          "parent_comment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Comment Id"
+          },
+          "parent_author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Author Name"
+          },
+          "like_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Like Count"
+          },
+          "is_author": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Author"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "comment_id",
+          "video_id"
+        ],
+        "title": "ProfileComment"
+      },
+      "ProfileVideoRow": {
+        "properties": {
+          "video_id": {
+            "type": "string",
+            "title": "Video Id"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "comment_count": {
+            "type": "integer",
+            "title": "Comment Count",
+            "default": 0
+          },
+          "root_count": {
+            "type": "integer",
+            "title": "Root Count",
+            "default": 0
+          },
+          "reply_count": {
+            "type": "integer",
+            "title": "Reply Count",
+            "default": 0
+          },
+          "reply_to_count": {
+            "type": "integer",
+            "title": "Reply To Count",
+            "default": 0
+          },
+          "first_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen At"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "video_id"
+        ],
+        "title": "ProfileVideoRow"
+      },
       "Project": {
         "properties": {
           "project_id": {
@@ -9926,6 +13393,85 @@
         ],
         "title": "ProjectItem",
         "description": "A project item that groups related samples and datasets for a research project.\n\nA project item can contain multiple samples and datasets, allowing researchers\nto organize their work into logical units (e.g., \"Pilot Study\", \"Main Analysis\",\n\"Replication\"). Each item tracks its constituent samples and datasets with\nprovenance information."
+      },
+      "ProjectionSummary": {
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "title": "Entity Type"
+          },
+          "entity_count": {
+            "type": "integer",
+            "title": "Entity Count",
+            "default": 0
+          },
+          "commenter_count": {
+            "type": "integer",
+            "title": "Commenter Count",
+            "default": 0
+          },
+          "comment_count": {
+            "type": "integer",
+            "title": "Comment Count",
+            "default": 0
+          },
+          "unidentified_comments": {
+            "type": "integer",
+            "title": "Unidentified Comments",
+            "default": 0
+          },
+          "pair_count": {
+            "type": "integer",
+            "title": "Pair Count",
+            "default": 0
+          },
+          "average_jaccard": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Jaccard"
+          },
+          "max_jaccard_pair": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Jaccard Pair"
+          },
+          "max_shared_pair": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Shared Pair"
+          },
+          "bridge_commenter_count": {
+            "type": "integer",
+            "title": "Bridge Commenter Count",
+            "default": 0
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "entity_type"
+        ],
+        "title": "ProjectionSummary"
       },
       "ProvenanceRecord": {
         "properties": {
@@ -10334,6 +13880,17 @@
             ],
             "title": "Title"
           },
+          "run_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Type"
+          },
           "observed_at": {
             "anyOf": [
               {
@@ -10649,6 +14206,17 @@
               }
             ],
             "title": "Target Video Id"
+          },
+          "parent_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Run Id"
           },
           "started_at": {
             "type": "string",
@@ -11377,6 +14945,118 @@
         "title": "SamplingStrategy",
         "description": "Reproducible research sampling strategies."
       },
+      "ScrapeFilters": {
+        "properties": {
+          "max_recommendations_per_video": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Recommendations Per Video",
+            "description": "Keep only the top-N recommendations per feed"
+          },
+          "collect_comments": {
+            "type": "boolean",
+            "title": "Collect Comments",
+            "default": true
+          },
+          "comment_min_likes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Min Likes"
+          },
+          "comment_date_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Date From"
+          },
+          "comment_date_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment Date To"
+          },
+          "max_comments_per_video": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Comments Per Video"
+          },
+          "dedupe": {
+            "type": "boolean",
+            "title": "Dedupe",
+            "default": true
+          },
+          "only_new_targets": {
+            "type": "boolean",
+            "title": "Only New Targets",
+            "default": true
+          },
+          "concurrency": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concurrency"
+          },
+          "projection": {
+            "type": "string",
+            "title": "Projection",
+            "default": "video"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ScrapeFilters",
+        "description": "What a network-expansion scrape should collect from the recommendations.\n\nRequest-side (``extra=\"forbid\"``). Defaults mirror the click-to-scrape\nbehaviour: collect comments, skip already-observed edges, deep-enrich only\nvideos the corpus does not know yet, project onto the video graph."
+      },
+      "ScrapeRecommendationsRequest": {
+        "properties": {
+          "video_url": {
+            "type": "string",
+            "title": "Video Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "video_url"
+        ],
+        "title": "ScrapeRecommendationsRequest"
+      },
       "SearchHit": {
         "properties": {
           "entity": {
@@ -11428,6 +15108,75 @@
         ],
         "title": "SearchHit",
         "description": "One unified search result row."
+      },
+      "SharedCommenter": {
+        "properties": {
+          "author_key": {
+            "type": "string",
+            "title": "Author Key"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "identity_kind": {
+            "type": "string",
+            "title": "Identity Kind"
+          },
+          "count_a": {
+            "type": "integer",
+            "title": "Count A",
+            "default": 0
+          },
+          "count_b": {
+            "type": "integer",
+            "title": "Count B",
+            "default": 0
+          },
+          "total_comments": {
+            "type": "integer",
+            "title": "Total Comments",
+            "default": 0
+          },
+          "first_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen At"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "author_key",
+          "identity_kind"
+        ],
+        "title": "SharedCommenter"
       },
       "SortOption": {
         "properties": {
@@ -11597,6 +15346,56 @@
         ],
         "title": "ThreadSizeBreakdown",
         "description": "One comment thread (root plus its descendant replies)."
+      },
+      "TopSharedCommenter": {
+        "properties": {
+          "author_key": {
+            "type": "string",
+            "title": "Author Key"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "identity_kind": {
+            "type": "string",
+            "title": "Identity Kind"
+          },
+          "entity_count": {
+            "type": "integer",
+            "title": "Entity Count",
+            "default": 0
+          },
+          "comment_count": {
+            "type": "integer",
+            "title": "Comment Count",
+            "default": 0
+          },
+          "video_count": {
+            "type": "integer",
+            "title": "Video Count",
+            "default": 0
+          },
+          "channel_count": {
+            "type": "integer",
+            "title": "Channel Count",
+            "default": 0
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "author_key",
+          "identity_kind"
+        ],
+        "title": "TopSharedCommenter"
       },
       "TopVideoRow": {
         "properties": {
@@ -12269,6 +16068,84 @@
           "comment_rate"
         ],
         "title": "VideoEngagementPayload"
+      },
+      "VideoExpansionStats": {
+        "properties": {
+          "video_id": {
+            "type": "string",
+            "title": "Video Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          },
+          "recommendation_count": {
+            "type": "integer",
+            "title": "Recommendation Count",
+            "default": 0
+          },
+          "in_degree": {
+            "type": "integer",
+            "title": "In Degree",
+            "default": 0
+          },
+          "new_targets": {
+            "type": "integer",
+            "title": "New Targets",
+            "default": 0
+          },
+          "new_channels": {
+            "type": "integer",
+            "title": "New Channels",
+            "default": 0
+          },
+          "new_edges": {
+            "type": "integer",
+            "title": "New Edges",
+            "default": 0
+          },
+          "comments_collected": {
+            "type": "integer",
+            "title": "Comments Collected",
+            "default": 0
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "video_id"
+        ],
+        "title": "VideoExpansionStats",
+        "description": "Per-video stats within a network-expansion action (doc \u00a74.1)."
       },
       "VideoFilter": {
         "properties": {

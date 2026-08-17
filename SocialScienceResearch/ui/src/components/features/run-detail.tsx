@@ -50,9 +50,24 @@ export function RunDetail({ runId }: { runId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-sm">{run.run_id}</span>
+        <span className="font-mono text-sm">{run.name ?? run.run_id}</span>
         <RunStatusBadge status={run.status} />
         <Badge variant="secondary">{run.run_type}</Badge>
+        {run.target_video_id ? (
+          <Link
+            href={`/videos/${run.target_video_id}`}
+            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+          >
+            video {run.target_video_id}
+          </Link>
+        ) : run.target_channel_id ? (
+          <Link
+            href={`/channels/${run.target_channel_id}`}
+            className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+          >
+            channel {run.target_channel_id}
+          </Link>
+        ) : null}
         <span className="ml-auto text-xs text-muted-foreground">
           provider {run.provider}
           {run.provider_version ? ` v${run.provider_version}` : ""}

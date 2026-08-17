@@ -244,10 +244,13 @@ export function useNetworkSummary(runId?: string, topN = 10) {
   });
 }
 
-export function useNetworkVideoContext(videoId: string, runId?: string) {
+export function useNetworkVideoContext(
+  videoId: string,
+  runId?: string,
+) {
   return useQuery({
     queryKey: queryKeys.networkVideoContext(videoId, runId),
-    queryFn: () => api.getNetworkVideoContext(videoId, runId),
+    queryFn: () => api.getVideoNetworkContext(videoId, runId),
     enabled: !!videoId,
   });
 }

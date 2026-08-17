@@ -1,101 +1,553 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import {
+  ExternalLink,
+  Loader2,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import { LoadingState } from "@/components/features/state";
 import { CHART_VARS, resolveChartColors } from "@/lib/colors";
 import { useTheme } from "@/lib/theme";
+import { formatDuration, formatNumber } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Drawer,
+  DrawerBody,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type {
+  ChannelFacet,
+  GraphNodeKind,
+  RunFacet,
+} from "@/lib/network-full-types";
 
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), {
   ssr: false,
   loading: () => <LoadingState label="Rendering network…" />,
 });
 
-export interface NetworkNode {
+export interface GraphNode {
   id: string;
   title?: string | null;
-  kind: "source" | "target" | "both" | "other";
-  value?: number;
+  channel?: string | null;
+  channel_id?: string | null;
+  thumbnail?: string | null;
+  views?: number | null;
+  likes?: number | null;
+  duration?: number | null;
+  kind: GraphNodeKind;
+  in_degree: number;
+  out_degree: number;
+  run_ids?: string[];
+  run_types?: string[];
+  community_id?: number | null;
 }
 
-export interface NetworkLink {
+export interface GraphLink {
   source: string;
   target: string;
-  runId?: string | null;
   position?: number | null;
+  run_id?: string | null;
+  run_type?: string | null;
+  run_name?: string | null;
+  title?: string | null;
 }
 
-const NODE_COLORS: Record<NetworkNode["kind"], string> = {
-  source: CHART_VARS.ink,
+export interface NetworkGraphProps {
+  nodes: GraphNode[];
+  links: GraphLink[];
+  height?: number;
+  runs?: RunFacet[];
+  channels?: ChannelFacet[];
+  selectedRun?: string;
+  selectedChannel?: string;
+  onRunChange?: (runId: string) => void;
+  onChannelChange?: (channelId: string) => void;
+  onClearFilters?: () => void;
+  /** Color nodes/edges by their run/layer (each run gets a distinct color). */
+  colorMode?: "role" | "layer" | "community";
+  /** Opens the video's dedicated page. */
+  onNavigate?: (videoId: string) => void;
+  /** Queues a recommendation scrape for a single video (drawer action only). */
+  onScrapeClick?: (videoId: string) => Promise<void>;
+  /** Opens the commenter-overlap view scoped to a single video (drawer action only). */
+  onOverlapClick?: (videoId: string) => void;
+}
+
+const roleColors: Record<GraphNodeKind, string> = {
+  source: CHART_VARS.accent,
   target: CHART_VARS.dim,
-  both: CHART_VARS.ink,
+  both: CHART_VARS.accent2,
   other: CHART_VARS.faint,
 };
+
+/** Fixed palette so each run/layer keeps a stable, distinct color. */
+const RUN_COLORS = [
+  "#2563eb",
+  "#dc2626",
+  "#16a34a",
+  "#9333ea",
+  "#ea580c",
+  "#0891b2",
+  "#ca8a04",
+  "#db2777",
+  "#65a30d",
+  "#4f46e5",
+  "#0d9488",
+  "#e11d48",
+];
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+export function runColorFor(runId: string): string {
+  return RUN_COLORS[hashString(runId) % RUN_COLORS.length];
+}
+
+/** Distinct colors for detected communities (indexed by community_id). */
+const COMMUNITY_COLORS = [
+  "#2563eb",
+  "#16a34a",
+  "#9333ea",
+  "#ea580c",
+  "#0891b2",
+  "#db2777",
+  "#65a30d",
+  "#ca8a04",
+  "#4f46e5",
+  "#e11d48",
+];
+
+export function communityColorFor(communityId: number): string {
+  return COMMUNITY_COLORS[communityId % COMMUNITY_COLORS.length];
+}
+
+function roleLabel(kind: GraphNodeKind): string {
+  switch (kind) {
+    case "source":
+      return "Focus video";
+    case "both":
+      return "Recommends & recommended";
+    case "target":
+      return "Connected video";
+    default:
+      return "Other";
+  }
+}
+
+function roleColor(
+  kind: GraphNodeKind,
+  colors: ReturnType<typeof resolveChartColors>,
+): string {
+  switch (kind) {
+    case "source":
+      return colors.accent;
+    case "both":
+      return colors.accent2;
+    case "target":
+      return colors.dim;
+    default:
+      return colors.faint;
+  }
+}
 
 export function NetworkGraph({
   nodes,
   links,
   height = 480,
-  onNodeClick,
-}: {
-  nodes: NetworkNode[];
-  links: NetworkLink[];
-  height?: number;
-  onNodeClick?: (id: string) => void;
-}) {
+  runs = [],
+  channels = [],
+  selectedRun,
+  selectedChannel,
+  onRunChange,
+  onChannelChange,
+  onClearFilters,
+  colorMode: initialColorMode = "role",
+  onNavigate,
+  onScrapeClick,
+  onOverlapClick,
+}: NetworkGraphProps) {
   const { theme } = useTheme();
+  const [colorMode, setColorMode] = useState<"role" | "layer" | "community">(initialColorMode);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- force-graph's ref type is generics-hostile
+  const graphRef = useRef<any>(null);
+  const [positions, setPositions] = useState<Map<string, { x: number; y: number }>>(
+    () => new Map(),
+  );
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(
+    null,
+  );
+  const [inspectId, setInspectId] = useState<string | null>(null);
+  const [scraping, setScraping] = useState(false);
+
   // eslint-disable-next-line react-hooks/exhaustive-deps -- theme intentionally forces a canvas recolor on toggle
   const canvasColors = useMemo(() => resolveChartColors(), [theme]);
-  const graphData = useMemo(
-    () => ({
-      nodes: nodes.map((n) => ({
+
+  const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+
+  // Re-seed cached positions so toggling filters does not explode the layout.
+  const graphData = useMemo(() => {
+    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+    const positioned = nodes.map((n) => {
+      const cached = positions.get(n.id);
+      return {
         id: n.id,
-        title: n.title ?? n.id,
-        val: n.value ?? 1,
-      })),
-      links: links.map((l) => ({
-        source: l.source,
-        target: l.target,
-      })),
-    }),
-    [nodes, links],
-  );
+        val: Math.max(2, Math.sqrt(n.in_degree + n.out_degree + 1) * 2),
+        x: cached?.x,
+        y: cached?.y,
+      };
+    });
+    return {
+      nodes: positioned,
+      links: links
+        .filter((l) => nodeMap.has(l.source) && nodeMap.has(l.target))
+        .map((l) => ({
+          source: l.source,
+          target: l.target,
+          run_id: l.run_id ?? null,
+        })),
+    };
+  }, [nodes, links, positions]);
+
+  function linkRunId(link: unknown): string | null {
+    const runId = (link as { run_id?: string | null }).run_id;
+    return runId ?? null;
+  }
+
+  function nodeColor(node: unknown): string {
+    const id = (node as { id?: string }).id ?? "";
+    const meta = nodeById.get(id);
+    if (!meta) return canvasColors.ink;
+    if (colorMode === "community" && meta.community_id != null) {
+      return communityColorFor(meta.community_id);
+    }
+    if (colorMode === "layer" && meta.run_ids && meta.run_ids.length > 0) {
+      return runColorFor(meta.run_ids[0]);
+    }
+    return roleColor(meta.kind, canvasColors);
+  }
+
+  function linkColor(link: unknown): string {
+    if (colorMode === "layer") {
+      const runId = linkRunId(link);
+      if (runId) return runColorFor(runId);
+    }
+    if (colorMode === "community") {
+      const sourceId = (link as { source?: string }).source ?? "";
+      const meta = nodeById.get(sourceId);
+      if (meta && meta.community_id != null) {
+        return communityColorFor(meta.community_id);
+      }
+    }
+    return canvasColors.link;
+  }
+
+  const hoveredNode = hoveredId ? nodeById.get(hoveredId) : undefined;
+  const inspectedNode = inspectId ? nodeById.get(inspectId) : undefined;
+
+  function handleHover(
+    node: { id?: string | number; x?: number; y?: number } | null,
+  ) {
+    if (!node?.id) {
+      setHoveredId(null);
+      setTooltipPos(null);
+      return;
+    }
+    setHoveredId(String(node.id));
+    const screen = graphRef.current?.graph2ScreenCoords(
+      node.x ?? 0,
+      node.y ?? 0,
+    );
+    if (screen) setTooltipPos({ x: screen.x, y: screen.y });
+  }
+
+  function rememberPosition(node: {
+    id?: string | number;
+    x?: number;
+    y?: number;
+  }) {
+    if (node?.id && node.x != null && node.y != null) {
+      const id = String(node.id);
+      setPositions((prev) => {
+        const current = prev.get(id);
+        if (current && Math.abs(current.x - node.x!) < 0.5 && Math.abs(current.y - node.y!) < 0.5) {
+          return prev;
+        }
+        const next = new Map(prev);
+        next.set(id, { x: node.x!, y: node.y! });
+        return next;
+      });
+    }
+  }
+
+  useEffect(() => {
+    if (graphData.nodes.length === 0) return;
+    const g = graphRef.current;
+    if (!g) return;
+    const charge = g.d3Force?.("charge");
+    if (charge?.strength) charge.strength(-300);
+    const link = g.d3Force?.("link");
+    if (link?.distance) link.distance(110);
+    if (link?.strength) link.strength(0.2);
+  }, [graphData]);
+
+  async function handleScrape(videoId: string) {
+    if (!onScrapeClick || scraping) return;
+    setScraping(true);
+    try {
+      await onScrapeClick(videoId);
+    } finally {
+      setScraping(false);
+    }
+  }
 
   return (
-    <div>
+    <div className="space-y-3">
+      {runs.length > 0 || channels.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-3">
+          {channels.length > 0 && (
+            <Select
+              value={selectedChannel ?? ""}
+              onValueChange={(v) => onChannelChange?.(v || "__all")}
+            >
+              <SelectTrigger
+                className="w-[220px]"
+                aria-label="Filter by channel"
+              >
+                <SelectValue placeholder="All channels" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All channels</SelectItem>
+                {channels.map((c) => (
+                  <SelectItem key={c.channel_id} value={c.channel_id}>
+                    {c.channel_name ?? c.channel_id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          {runs.length > 0 && (
+            <Select
+              value={selectedRun ?? ""}
+              onValueChange={(v) => onRunChange?.(v || "__all")}
+            >
+              <SelectTrigger className="w-[240px]" aria-label="Filter by run">
+                <SelectValue placeholder="All runs" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All runs</SelectItem>
+                {runs.map((r) => (
+                  <SelectItem key={r.run_id} value={r.run_id}>
+                    {[r.run_type, r.name, r.run_id]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          {runs.length > 0 && (
+            <Select
+              value={colorMode}
+              onValueChange={(v) =>
+                setColorMode(v as "role" | "layer" | "community")
+              }
+              items={[
+                { value: "role", label: "Color by role" },
+                { value: "layer", label: "Color by layer (run)" },
+                { value: "community", label: "Color by community" },
+              ]}
+            >
+              <SelectTrigger className="w-[190px]" aria-label="Color nodes and edges by">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="role">Color by role</SelectItem>
+                <SelectItem value="layer">Color by layer (run)</SelectItem>
+                <SelectItem value="community">Color by community</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+
+          {(selectedRun || selectedChannel) && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {selectedRun && (
+                <Badge variant="outline" className="gap-1">
+                  Run: {selectedRun}
+                </Badge>
+              )}
+              {selectedChannel && (
+                <Badge variant="outline" className="gap-1">
+                  Channel:{" "}
+                  {channels.find((c) => c.channel_id === selectedChannel)
+                    ?.channel_name ?? selectedChannel}
+                </Badge>
+              )}
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => onClearFilters?.()}
+              >
+                Clear
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : null}
+
       <div
-        className="w-full overflow-hidden rounded-md border bg-muted/30"
+        className="relative w-full overflow-hidden rounded-md border bg-muted/30"
         style={{ height }}
       >
-        {nodes.length > 0 ? (
+        {graphData.nodes.length > 0 ? (
           <ForceGraph2D
+            ref={graphRef}
             graphData={graphData}
             backgroundColor="transparent"
             nodeRelSize={5}
-            // The force-graph typings model nodes loosely; accessors use any.
-            nodeVal={(d: unknown) => (d as { val?: number }).val ?? 1}
-            nodeColor={(d: unknown) => {
-              const id = (d as { id?: string }).id;
-              const match = id ? nodes.find((n) => n.id === id) : undefined;
-              const kind = match ? match.kind : "other";
-              const map: Record<NetworkNode["kind"], string> = {
-                source: canvasColors.ink,
-                target: canvasColors.dim,
-                both: canvasColors.ink,
-                other: canvasColors.faint,
-              };
-              return map[kind];
+            nodeVal={(d: unknown) => (d as { val?: number }).val ?? 2}
+            nodeColor={nodeColor}
+            nodeCanvasObject={(
+              node: {
+                id?: string | number;
+                x?: number;
+                y?: number;
+                color?: string;
+              },
+              ctx: CanvasRenderingContext2D,
+              globalScale: number,
+            ) => {
+              const id = String(node.id ?? "");
+              const meta = nodeById.get(id);
+              const base = nodeColor({ id });
+              const radius =
+                6 + Math.min(12, Math.sqrt((meta?.in_degree ?? 0) + (meta?.out_degree ?? 0)) * 2.5);
+
+              ctx.beginPath();
+              ctx.arc(node.x ?? 0, node.y ?? 0, radius, 0, 2 * Math.PI);
+              ctx.fillStyle = base;
+              ctx.globalAlpha = hoveredId && hoveredId !== id ? 0.45 : 0.95;
+              ctx.fill();
+              ctx.globalAlpha = 1;
+              ctx.lineWidth = 1;
+              ctx.strokeStyle = node.color ?? canvasColors.inkMuted;
+              ctx.stroke();
+
+              if (meta?.thumbnail) {
+                const img = new Image();
+                img.crossOrigin = "anonymous";
+                img.onload = () => {
+                  ctx.save();
+                  ctx.beginPath();
+                  ctx.arc(node.x ?? 0, node.y ?? 0, radius - 1, 0, 2 * Math.PI);
+                  ctx.clip();
+                  ctx.drawImage(
+                    img,
+                    (node.x ?? 0) - radius + 1,
+                    (node.y ?? 0) - radius + 1,
+                    (radius - 1) * 2,
+                    (radius - 1) * 2,
+                  );
+                  ctx.restore();
+                };
+                img.src = meta.thumbnail;
+              }
+
+              // Composite label: [ID] + Channel Name + Video Title.
+              if (globalScale >= 1.1) {
+                const label = [
+                  `[${id}]`,
+                  meta?.channel ?? "",
+                  meta?.title ?? "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                ctx.font = "500 9px system-ui, sans-serif";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "top";
+                ctx.fillStyle = canvasColors.inkMuted;
+                const textWidth = ctx.measureText(label).width;
+                ctx.fillStyle = "rgba(255,255,255,0.7)";
+                ctx.fillRect(
+                  (node.x ?? 0) - textWidth / 2 - 3,
+                  (node.y ?? 0) + radius + 3,
+                  textWidth + 6,
+                  13,
+                );
+                ctx.fillStyle = canvasColors.ink;
+                ctx.fillText(
+                  label,
+                  node.x ?? 0,
+                  (node.y ?? 0) + radius + 4,
+                );
+              }
             }}
-            nodeLabel={(d: unknown) => {
-              const node = d as { title?: string; id?: string };
-              return node.title ?? node.id ?? "video";
+            nodePointerAreaPaint={(
+              node: { id?: string | number; x?: number; y?: number },
+              color: string,
+              ctx: CanvasRenderingContext2D,
+            ) => {
+              const id = String(node.id ?? "");
+              ctx.fillStyle = color;
+              ctx.beginPath();
+              ctx.arc(
+                node.x ?? 0,
+                node.y ?? 0,
+                6 + Math.min(12, Math.sqrt((nodeById.get(id)?.in_degree ?? 0) + (nodeById.get(id)?.out_degree ?? 0)) * 2.5),
+                0,
+                2 * Math.PI,
+              );
+              ctx.fill();
             }}
-            linkColor={() => canvasColors.link}
+            linkColor={linkColor}
             linkWidth={1.2}
-            cooldownTicks={120}
+            cooldownTicks={220}
+            d3VelocityDecay={0.86}
             onNodeClick={(d: unknown) => {
               const id = (d as { id?: string }).id;
-              if (id) onNodeClick?.(id);
+              if (!id) return;
+              setInspectId(id);
+              setHoveredId(null);
+              setTooltipPos(null);
+            }}
+            onNodeHover={handleHover}
+            onNodeDragEnd={(node: {
+              id?: string | number;
+              x?: number;
+              y?: number;
+            }) => {
+              rememberPosition(node);
+            }}
+            onEngineStop={() => {
+              graphData.nodes.forEach((n) =>
+                rememberPosition(n as { id?: string; x?: number; y?: number }),
+              );
+              // Fit the spread-out layout into view so no node is stranded
+              // outside the viewport after the simulation settles.
+              graphRef.current?.zoomToFit?.(350, 48);
             }}
           />
         ) : (
@@ -103,14 +555,191 @@ export function NetworkGraph({
             No network to render
           </div>
         )}
+
+        {hoveredNode && tooltipPos && (
+          <div
+            data-testid="network-graph-tooltip"
+            className="pointer-events-none absolute z-10 w-64 rounded-md border bg-popover/95 p-3 text-sm text-popover-foreground shadow-md"
+            style={{
+              left: Math.min(tooltipPos.x + 14, Math.max(0, (height || 480) - 280)),
+              top: tooltipPos.y + 14,
+            }}
+          >
+            <div className="flex items-start gap-2">
+              {hoveredNode.thumbnail ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={hoveredNode.thumbnail}
+                  alt=""
+                  className="size-10 shrink-0 rounded object-cover"
+                />
+              ) : null}
+              <div className="min-w-0 space-y-1">
+                <p className="break-words font-medium">
+                  [{hoveredNode.id}]
+                  {hoveredNode.channel ? (
+                    <span className="ml-1 text-muted-foreground">
+                      · {hoveredNode.channel}
+                    </span>
+                  ) : null}
+                </p>
+                {hoveredNode.title ? (
+                  <p className="line-clamp-2 text-xs text-muted-foreground">
+                    {hoveredNode.title}
+                  </p>
+                ) : null}
+                <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                  <span>
+                    {formatNumber(hoveredNode.views)} views
+                  </span>
+                  <span>{formatDuration(hoveredNode.duration)}</span>
+                  <span>
+                    →{hoveredNode.out_degree} · ←{hoveredNode.in_degree}
+                  </span>
+                </p>
+                <a
+                  href={`https://www.youtube.com/watch?v=${hoveredNode.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline"
+                >
+                  <ExternalLink className="size-3" aria-hidden />
+                  Watch video
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
       <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">
-        <LegendItem color={NODE_COLORS.source} label="Focus video" />
-        <LegendItem color={NODE_COLORS.target} label="Connected video" />
-        <LegendItem color={NODE_COLORS.other} label="Other" />
-        <span>Click a node to inspect its ego-network.</span>
+        {colorMode === "layer" && runs.length > 0 ? (
+          <>
+            {runs.map((r) => (
+              <LegendItem key={r.run_id} color={runColorFor(r.run_id)} label={r.name ?? r.run_id} />
+            ))}
+            <span>Click a node to inspect it.</span>
+          </>
+        ) : colorMode === "community" ? (
+          <>
+            {Array.from(new Set(nodes.map((n) => n.community_id).filter((id): id is number => id != null)))
+              .sort((a, b) => a - b)
+              .map((id) => (
+                <LegendItem key={id} color={communityColorFor(id)} label={`Community ${id}`} />
+              ))}
+            <span>Click a node to inspect it.</span>
+          </>
+        ) : (
+          <>
+            <LegendItem color={roleColors.source} label="Focus video" />
+            <LegendItem color={roleColors.both} label="Recommends & recommended" />
+            <LegendItem color={roleColors.target} label="Connected video" />
+            <span>Click a node to inspect it.</span>
+          </>
+        )}
       </div>
+
+      <Drawer
+        open={!!inspectedNode}
+        onOpenChange={(open) => {
+          if (!open) setInspectId(null);
+        }}
+      >
+        <DrawerContent side="right">
+          {inspectedNode ? (
+            <>
+              <DrawerHeader>
+                <DrawerTitle className="break-all">
+                  [{inspectedNode.id}]
+                </DrawerTitle>
+                <DrawerDescription className="line-clamp-2">
+                  {inspectedNode.title ?? "No title recorded"}
+                </DrawerDescription>
+              </DrawerHeader>
+              <DrawerBody className="space-y-4">
+                {inspectedNode.thumbnail ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={inspectedNode.thumbnail}
+                    alt={inspectedNode.title ?? inspectedNode.id}
+                    className="aspect-video w-full rounded-md border object-cover"
+                  />
+                ) : null}
+
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <Row label="Channel" value={inspectedNode.channel} />
+                  <Row label="Kind" value={roleLabel(inspectedNode.kind)} />
+                  <Row label="Views" value={formatNumber(inspectedNode.views)} />
+                  <Row label="Duration" value={formatDuration(inspectedNode.duration)} />
+                  <Row label="Out-degree" value={String(inspectedNode.out_degree)} />
+                  <Row label="In-degree" value={String(inspectedNode.in_degree)} />
+                </dl>
+
+                {inspectedNode.run_types && inspectedNode.run_types.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {inspectedNode.run_types.map((t) => (
+                      <Badge key={t} variant="secondary">
+                        {t}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+              </DrawerBody>
+              <div className="flex flex-col gap-2 border-t bg-muted/50 p-4">
+                {onScrapeClick ? (
+                  <Button
+                    onClick={() => void handleScrape(inspectedNode.id)}
+                    disabled={scraping}
+                  >
+                    {scraping ? (
+                      <Loader2 className="animate-spin" aria-hidden />
+                    ) : (
+                      <Sparkles aria-hidden />
+                    )}
+                    Scrape recommendations
+                  </Button>
+                ) : null}
+                {onOverlapClick ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => onOverlapClick(inspectedNode.id)}
+                  >
+                    <Users aria-hidden />
+                    Commenter overlap
+                  </Button>
+                ) : null}
+                <Button
+                  variant="outline"
+                  onClick={
+                    onNavigate
+                      ? () => onNavigate(inspectedNode.id)
+                      : undefined
+                  }
+                  render={
+                    onNavigate ? undefined : (
+                      <Link href={`/network/videos/${inspectedNode.id}`} />
+                    )
+                  }
+                  nativeButton={!!onNavigate}
+                >
+                  <ExternalLink aria-hidden />
+                  Open video page
+                </Button>
+              </div>
+            </>
+          ) : null}
+        </DrawerContent>
+      </Drawer>
     </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="break-words text-right">{value || "—"}</dd>
+    </>
   );
 }
 

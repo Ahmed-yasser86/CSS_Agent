@@ -149,6 +149,13 @@ function ProjectCard({
   const { toast } = useToast();
   const deleteProject = useDeleteProject();
   const removeDataset = useRemoveDatasetFromProject();
+  const datasetsQuery = useDatasetList();
+  const datasetNames = new Map(
+    (datasetsQuery.data?.pages ?? [])
+      .flatMap((p) => p.items)
+      .filter((d) => d.name)
+      .map((d) => [d.dataset_id, d.name]),
+  );
 
   function handleDelete() {
     if (!confirm(`Delete project "${project.name}"?`)) return;
@@ -274,7 +281,9 @@ function ProjectCard({
                   key={datasetId}
                   className="flex items-center justify-between gap-2 rounded bg-muted/30 px-2 py-1"
                 >
-                  <span className="font-mono text-xs truncate">{datasetId}</span>
+                  <span className="text-xs truncate">
+                    {datasetNames.get(datasetId) ?? datasetId}
+                  </span>
                   <button
                     type="button"
                     onClick={() => handleRemoveDataset(datasetId)}

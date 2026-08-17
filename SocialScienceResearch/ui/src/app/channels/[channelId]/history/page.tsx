@@ -4,10 +4,14 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { ChannelLongitudinalChart } from "@/components/features/analytics/longitudinal-chart";
+import { useChannels } from "@/services/queries";
 
 export default function ChannelHistoryPage() {
   const params = useParams<{ channelId: string }>();
   const channelId = String(params.channelId ?? "");
+  const channelsQuery = useChannels();
+  const channelTitle =
+    channelsQuery.data?.find((c) => c.channel_id === channelId)?.title ?? null;
 
   return (
     <div className="space-y-4">
@@ -21,16 +25,16 @@ export default function ChannelHistoryPage() {
         <ChevronRight className="size-3" aria-hidden />
         <Link
           href={`/channels/${channelId}`}
-          className="font-mono underline-offset-2 hover:underline"
+          className="underline-offset-2 hover:underline"
         >
-          {channelId}
+          {channelTitle ?? channelId}
         </Link>
         <ChevronRight className="size-3" aria-hidden />
         <span>History</span>
       </nav>
 
       <header className="flex flex-wrap items-center gap-2">
-        <h1 className="text-lg font-semibold">{channelId}</h1>
+        <h1 className="text-lg font-semibold">{channelTitle ?? channelId}</h1>
         <code className="text-xs text-muted-foreground">history</code>
       </header>
 

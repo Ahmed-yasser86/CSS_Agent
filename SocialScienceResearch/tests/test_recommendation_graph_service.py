@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch, MagicMock
 from SocialScienceResearch.domain.enums import RecommendationStatus
 from SocialScienceResearch.domain.models import RecommendationObservation
 from SocialScienceResearch.services import RecommendationGraphService
+from SocialScienceResearch.services.dataset_service import DatasetService
 
 
 def _edge(repos, source, target, *, run="run_1", position=None):
@@ -30,17 +32,44 @@ def _seed(repos):
     _edge(repos, "v3", "v4", position=0)
 
 
-def test_build_graph_edges(excel_repos) -> None:
+def test_build_graph_edges_and_persistence(excel_repos) -> None:
     _seed(excel_repos)
+
     graph = RecommendationGraphService(excel_repos).build_graph()
     assert set(graph.nodes()) == {"v1", "v2", "v3", "v4"}
     assert graph.number_of_edges() == 6
     assert set(graph.successors("v1")) == {"v2", "v3", "v4"}
 
 
+def test_build_graph_does_not_persist_a_dataset(excel_repos) -> None:
+    """Read paths must never write: build_graph has no dataset side effect."""
+    _seed(excel_repos)
+    service = RecommendationGraphService(excel_repos)
+    with patch(
+        "SocialScienceResearch.services.recommendation_graph_service.DatasetService"
+    ) as mock_dataset_service:
+        mock_dataset_service.return_value.create_dataset.return_value = MagicMock()
+        service.build_graph()
+        mock_dataset_service.assert_not_called()
+
+    # Dataset count stays zero after building.
+    assert len(DatasetService(excel_repos).list_datasets()) == 0
+
+
+def test_persist_graph_as_dataset_is_explicit(excel_repos) -> None:
+    """A researcher can still request a graph snapshot explicitly."""
+    _seed(excel_repos)
+    service = RecommendationGraphService(excel_repos)
+    service.persist_graph_as_dataset(run_id="run_1")
+    datasets = DatasetService(excel_repos).list_datasets()
+    assert len(datasets) == 1
+    assert "run_1" in datasets[0].name
+
+
 def test_build_graph_filters_by_run(excel_repos) -> None:
     _seed(excel_repos)
     _edge(excel_repos, "v9", "v1", run="run_2")
+
     graph = RecommendationGraphService(excel_repos).build_graph(run_id="run_1")
     assert "v9" not in graph.nodes()
 
@@ -101,3 +130,17 @@ def test_video_context_ranks_recommended_by_feed_position(excel_repos) -> None:
         "s_early",
         "s_late",
     ]
+
+
+def test_video_context_video_without_graph_edges_does_not_crash(excel_repos) -> None:
+    """A persisted video with no observed recommendation edges must not 500.
+
+    Regression: ``G.in_degree(v)`` returns an ``InDegreeView`` (not an int) for
+    a node absent from the graph, which used to crash ``int(...)``.
+    """
+    _seed(excel_repos)
+    context = RecommendationGraphService(excel_repos).video_context("ghost_video")
+    assert context.in_degree == 0
+    assert context.out_degree == 0
+    assert context.recommended_by == []
+    assert context.recommends == []

@@ -207,13 +207,15 @@ class QueryService:
         filter: VideoFilter | CommentFilter | None = None,
         sort: str | None = None,
         context: QueryContext | None = None,
+        run_ids: list[str] | None = None,
     ) -> list[dict]:
         """Resolve the corpus into row dicts keyed by variable name.
 
         Observed metrics (view/like/comment counts, subscriber counts, ...)
         are resolved to their *latest* observation via one batch scan per
         entity. ``filter`` (VideoFilter/CommentFilter) narrows video/comment
-        rows; ``context`` scopes the population (channel/video).
+        rows; ``context`` scopes the population (channel/video); ``run_ids``
+        scopes recommendation rows to edges observed in those runs.
         """
         entity = entity.lower()
         if entity == "video":
@@ -227,7 +229,7 @@ class QueryService:
         elif entity == "channel":
             rows = self._channel_rows()
         elif entity == "recommendation":
-            rows = self._recommendation_rows()
+            rows = self._recommendation_rows(run_ids=run_ids)
         elif entity == "author":
             rows = self._author_rows()
         else:
@@ -331,8 +333,13 @@ class QueryService:
             )
         return rows
 
-    def _recommendation_rows(self) -> list[dict[str, Any]]:
+    def _recommendation_rows(
+        self, run_ids: list[str] | None = None
+    ) -> list[dict[str, Any]]:
         edges = self._repos.recommendations.list_recommendation_edges()
+        if run_ids:
+            run_set = set(run_ids)
+            edges = [e for e in edges if e.collection_run_id in run_set]
         rows: list[dict[str, Any]] = []
         for edge in edges:
             rows.append(

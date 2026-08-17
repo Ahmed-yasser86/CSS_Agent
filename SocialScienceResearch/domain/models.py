@@ -51,6 +51,7 @@ class CollectionRun(BaseModel):
     target_url: str
     target_channel_id: str | None = None
     target_video_id: str | None = None
+    parent_run_id: str | None = None  # the run that triggered this one (lineage)
     started_at: datetime
     finished_at: datetime | None = None
     status: CollectionStatus = CollectionStatus.PENDING
@@ -64,6 +65,7 @@ class CollectionRun(BaseModel):
     comments_collected: int | None = None
     notes: list[str] = Field(default_factory=list)
     name: str | None = None  # researcher-provided display label (editable)
+    layer_index: int | None = None  # the crawl layer this run was created in (None outside a crawl)
 
 
 class CollectionError(BaseModel):
@@ -230,8 +232,10 @@ class RecommendationObservation(BaseModel):
     position: int | None = None  # ordering reported by the source, if any
     status: RecommendationStatus = RecommendationStatus.OBSERVED
     channel_id: str | None = None
+    channel_name: str | None = None
     title: str | None = None
     observed_at: datetime | None = None  # when the edge was observed (migration-safe)
+    layer_index: int | None = None  # denormalized producing-run layer (layer-filterable in one scan)
     raw_json: dict[str, Any] = Field(default_factory=dict)
 
 

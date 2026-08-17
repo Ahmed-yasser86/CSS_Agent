@@ -23,9 +23,11 @@ from fastapi.responses import StreamingResponse
 
 from SocialScienceResearch.api.routers.common import get_service, paginated
 from SocialScienceResearch.services.network_analytics_service import (
+    ChannelGraphPayload,
     ChannelProjection,
     EdgeRow,
     NetworkAnalyticsService,
+    NetworkGraph,
     NetworkMetrics,
     TemporalResult,
 )
@@ -44,21 +46,36 @@ def _service(request: Request) -> NetworkAnalyticsService:
     )
 
 
-def _edge_key(edge: dict) -> tuple[str, ...]:
+def _edge_key(edge) -> tuple[str, ...]:
     """Feed-rank pagination key: source video, position, then identity.
 
     Positions are zero-padded so string comparison mirrors numeric order and
     ``None`` (unknown rank) sorts after ranked edges. All keys are strings so
     cursor tokens remain comparable inside ``page_sorted``.
+    
+    Handles both dict and EdgeRow objects.
     """
-    position = edge["position"]
-    position_key = f"{position:08d}" if position is not None else "~"
-    return (
-        edge["source_video_id"],
-        position_key,
-        edge["run_id"] or "",
-        edge["recommended_video_id"],
-    )
+    # Handle both dict and EdgeRow objects
+    if hasattr(edge, "__dict__"):
+        # EdgeRow object
+        position = edge.position
+        position_key = f"{position:08d}" if position is not None else "~"
+        return (
+            edge.source_video_id,
+            position_key,
+            edge.run_id or "",
+            edge.recommended_video_id,
+        )
+    else:
+        # dict
+        position = edge["position"]
+        position_key = f"{position:08d}" if position is not None else "~"
+        return (
+            edge["source_video_id"],
+            position_key,
+            edge["run_id"] or "",
+            edge["recommended_video_id"],
+        )
 
 
 @router.get(
@@ -73,6 +90,54 @@ def network_metrics(
 ):
     """Aggregate statistics for the whole recommendation network (or a run)."""
     return _service(request).metrics(run_id=run_id, top_n=top_n)
+
+
+@router.get(
+    "/network/graph",
+    tags=["network"],
+    response_model=NetworkGraph | ChannelGraphPayload,
+)
+def network_graph(
+    request: Request,
+    run_id: str | None = Query(None),
+    channel_id: str | None = Query(None, description="Filter edges by channel_id"),
+    channel_scope: str = Query(
+        "source",
+        description="Which edge endpoint a channel filter matches: source|target|either",
+    ),
+    projection: str = Query(
+        "video",
+        description="Graph projection: video | channel",
+    ),
+):
+    """Enriched node/edge payload for the interactive graph UI.
+
+    Nodes carry composite labels (``[ID] + Channel Name + Video Title +
+    thumbnails/metrics``) plus degree/kind/provenance; the response includes
+    run and channel facets so the filter bar never derives options from the
+    rendered graph. ``projection=channel`` collapses the video network into
+    a channel-level graph (channels as nodes, weighted edges between them).
+    """
+    if projection not in ("video", "channel"):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail="projection must be video or channel")
+    if channel_scope not in ("source", "target", "either"):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail="channel_scope must be source, target or either")
+    service = _service(request)
+    if projection == "channel":
+        return service.channel_graph(
+            run_id=run_id,
+            channel_id=channel_id,
+            channel_scope=channel_scope,
+        )
+    return service.graph(
+        run_id=run_id,
+        channel_id=channel_id,
+        channel_scope=channel_scope,
+    )
 
 
 @router.get(
@@ -99,12 +164,26 @@ def network_temporal(
 def network_edges(
     request: Request,
     run_id: str | None = Query(None),
+    channel_id: str | None = Query(None, description="Filter edges by channel_id"),
+    channel_scope: str = Query(
+        "source",
+        description="Which edge endpoint a channel filter matches: source|target|either",
+    ),
     cursor: str | None = Query(None, description="Opaque cursor from the previous page"),
     page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=500),
 ):
-    """Cursor-paginated list of observed recommendation edges."""
+    """Cursor-paginated list of observed recommendation edges.
+    
+    Supports filtering by `run_id` and `channel_id` (source channel by default).
+    """
+    if channel_scope not in ("source", "target", "either"):
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail="channel_scope must be source, target or either")
     return paginated(
-        _service(request).edges(run_id=run_id),
+        _service(request).edges(
+            run_id=run_id, channel_id=channel_id, channel_scope=channel_scope
+        ),
         cursor=cursor,
         page_size=page_size,
         key=_edge_key,
