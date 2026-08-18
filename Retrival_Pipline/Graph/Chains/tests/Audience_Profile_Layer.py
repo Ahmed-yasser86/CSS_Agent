@@ -491,11 +491,29 @@ async def run_audience_intelligence(
 
 
 if __name__ == "__main__":
+    project_root = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
+    )
     asyncio.run(run_audience_intelligence(
         subject_name="Sheikh Mostafa Al-Adawy",
-        profile_path=r"C:\Users\DELL\graph-rag-agent\outputs\run_150f010a03c049fb8ae722c0541ad5d4\f491795c8c444e19af4c212b3b2b767e.md",
-        briefing_1_path=r"C:\Users\DELL\graph-rag-agent\outputs\run_f72fdfbdb74642b59e8a8eb3eb9e8188\b113dfd89d214e61ac82e1958b61dc84.md",
-        briefing_2_path=r"C:\Users\DELL\graph-rag-agent\outputs\run_f72fdfbdb74642b59e8a8eb3eb9e8188\b113dfd89d214e61ac82e1958b61dc84.md",  # غير المسار
+        profile_path=os.path.join(
+            project_root,
+            "outputs",
+            "run_150f010a03c049fb8ae722c0541ad5d4",
+            "f491795c8c444e19af4c212b3b2b767e.md",
+        ),
+        briefing_1_path=os.path.join(
+            project_root,
+            "outputs",
+            "run_f72fdfbdb74642b59e8a8eb3eb9e8188",
+            "b113dfd89d214e61ac82e1958b61dc84.md",
+        ),
+        briefing_2_path=os.path.join(
+            project_root,
+            "outputs",
+            "run_f72fdfbdb74642b59e8a8eb3eb9e8188",
+            "b113dfd89d214e61ac82e1958b61dc84.md",
+        ),  # غير المسار
         short_query="MostafaAlAdawy",
         max_sections=4,
     ))

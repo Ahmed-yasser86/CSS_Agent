@@ -383,10 +383,25 @@ except Exception as e:
 # Test run
 if __name__ == "__main__":
     async def run_test():
+        project_root = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..")
+        )
         # Example paths - these would come from user input in production
-        subject_profile_path = r"C:\Users\DELL\graph-rag-agent\mostafa_el_adawy_the_egyptian_salafai_report.md"
-        briefing_1_path = r"C:\Users\DELL\graph-rag-agent\outputs\run_f72fdfbdb74642b59e8a8eb3eb9e8188\b113dfd89d214e61ac82e1958b61dc84.md"
-        briefing_2_path = r"C:\Users\DELL\graph-rag-agent\outputs\run_f72fdfbdb74642b59e8a8eb3eb9e8188\b113dfd89d214e61ac82e1958b61dc84.md"
+        subject_profile_path = os.path.join(
+            project_root, "mostafa_el_adawy_the_egyptian_salafai_report.md"
+        )
+        briefing_1_path = os.path.join(
+            project_root,
+            "outputs",
+            "run_f72fdfbdb74642b59e8a8eb3eb9e8188",
+            "b113dfd89d214e61ac82e1958b61dc84.md",
+        )
+        briefing_2_path = os.path.join(
+            project_root,
+            "outputs",
+            "run_f72fdfbdb74642b59e8a8eb3eb9e8188",
+            "b113dfd89d214e61ac82e1958b61dc84.md",
+        )
         
         # Create initial state
         initial_state = create_initial_state(

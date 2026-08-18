@@ -29,6 +29,7 @@ function invalidateLayerQueries(queryClient: ReturnType<typeof useQueryClient>) 
   void queryClient.invalidateQueries({ queryKey: ["network", "layer"] });
   void queryClient.invalidateQueries({ queryKey: ["network", "graph"] });
   void queryClient.invalidateQueries({ queryKey: ["network", "full"] });
+  void queryClient.invalidateQueries({ queryKey: ["network", "summary"] });
   void queryClient.invalidateQueries({ queryKey: ["runs"] });
   void queryClient.invalidateQueries({ queryKey: ["jobs"] });
 }

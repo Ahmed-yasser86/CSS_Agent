@@ -1,4 +1,4 @@
-# YouTube Computational Social Science Module — Full Research-Grade Redesign, Gap Analysis, Planning & Implementation
+﻿# YouTube Computational Social Science Module â€” Full Research-Grade Redesign, Gap Analysis, Planning & Implementation
 
 ## Mission
 
@@ -8,9 +8,9 @@ It currently behaves too much like a basic YouTube analytics application:
 
 ```text
 Researcher enters URL
-        ↓
+        â†“
 System collects a predefined set of data
-        ↓
+        â†“
 System displays static metrics
 ```
 
@@ -45,11 +45,11 @@ First perform a complete audit of the current implementation.
 
 You already understand the project requirements and have already worked with:
 
-`C:\Users\DELL\graph-rag-agent\CodingPlans\functionality.md`
+`CodingPlans/functionality.md`
 
 and:
 
-`C:\Users\DELL\graph-rag-agent\CodingPlans\youtubeScraper.md`
+`CodingPlans/youtubeScraper.md`
 
 You also implemented the current backend.
 
@@ -81,31 +81,31 @@ Conceptually:
 
 ```text
 Researcher
-    ↓
+    â†“
 Defines research target
-    ↓
+    â†“
 Defines population
-    ↓
+    â†“
 Defines variables
-    ↓
+    â†“
 Defines temporal boundaries
-    ↓
+    â†“
 Defines inclusion/exclusion criteria
-    ↓
+    â†“
 Defines sampling strategy
-    ↓
+    â†“
 Defines collection depth
-    ↓
+    â†“
 Runs collection
-    ↓
+    â†“
 Inspects collected data
-    ↓
+    â†“
 Analyzes
-    ↓
+    â†“
 Compares
-    ↓
+    â†“
 Samples / constructs dataset
-    ↓
+    â†“
 Exports / continues research
 ```
 
@@ -154,7 +154,7 @@ Allow control over:
 Support researcher-defined periods such as:
 
 ```text
-2020-01-01 → 2023-12-31
+2020-01-01 â†’ 2023-12-31
 ```
 
 rather than forcing a predefined time window.
@@ -225,17 +225,17 @@ For example:
 
 ```text
 Channel
-    ↓
+    â†“
 Videos
-    ↓
+    â†“
 Video metadata
-    ↓
+    â†“
 Comments
-    ↓
+    â†“
 Replies
-    ↓
+    â†“
 Recommendation observations
-    ↓
+    â†“
 Collection metadata
 ```
 
@@ -343,7 +343,7 @@ All videos
 or:
 
 ```text
-Videos between 2020–2023
+Videos between 2020â€“2023
 ```
 
 or:
@@ -389,16 +389,16 @@ The workflow should allow:
 
 ```text
 Video
- ├── Observed metadata
- ├── Statistics
- ├── Script/transcript
- ├── Comments
- ├── Comment distributions
- ├── Comment engagement
- ├── Temporal behavior
- ├── Recommendation context
- ├── Related videos
- └── Research comparisons
+ â”œâ”€â”€ Observed metadata
+ â”œâ”€â”€ Statistics
+ â”œâ”€â”€ Script/transcript
+ â”œâ”€â”€ Comments
+ â”œâ”€â”€ Comment distributions
+ â”œâ”€â”€ Comment engagement
+ â”œâ”€â”€ Temporal behavior
+ â”œâ”€â”€ Recommendation context
+ â”œâ”€â”€ Related videos
+ â””â”€â”€ Research comparisons
 ```
 
 All available collected information should be discoverable.
@@ -558,15 +558,15 @@ The researcher should be able to:
 
 ```text
 Open Video
-    ↓
+    â†“
 Collect/inspect observed recommendations
-    ↓
+    â†“
 Inspect recommended videos
-    ↓
+    â†“
 Inspect their metadata
-    ↓
+    â†“
 Explore relationships
-    ↓
+    â†“
 Construct network-ready research data
 ```
 
@@ -611,15 +611,15 @@ Conceptually:
 
 ```text
 Collected population
-        ↓
+        â†“
 Researcher-defined criteria
-        ↓
+        â†“
 Filtered population
-        ↓
+        â†“
 Sampling
-        ↓
+        â†“
 Validation
-        ↓
+        â†“
 Research dataset
 ```
 
@@ -1034,13 +1034,13 @@ For every implemented capability:
 
 ```text
 Implement
-   ↓
+   â†“
 Unit test
-   ↓
+   â†“
 Integration test
-   ↓
+   â†“
 Fix
-   ↓
+   â†“
 Document
 ```
 
@@ -1117,27 +1117,27 @@ Use this order:
 
 ```text
 1. Full audit
-       ↓
+       â†“
 2. Gap analysis
-       ↓
+       â†“
 3. Research architecture
-       ↓
+       â†“
 4. Backend capability corrections
-       ↓
+       â†“
 5. Backend tests
-       ↓
+       â†“
 6. Backend documentation
-       ↓
+       â†“
 7. Frontend UX architecture
-       ↓
+       â†“
 8. Frontend implementation
-       ↓
+       â†“
 9. Frontend tests
-       ↓
+       â†“
 10. Integration testing
-       ↓
+       â†“
 11. Final research workflow validation
-       ↓
+       â†“
 12. Documentation
 ```
 
@@ -1149,19 +1149,19 @@ If a frontend requirement exposes a backend gap, stop and address the backend ca
 
 Classify identified work as:
 
-### P0 — Fundamental
+### P0 â€” Fundamental
 
 Without this, the system does not satisfy the research objective.
 
-### P1 — Research-critical
+### P1 â€” Research-critical
 
 Required for serious research workflows.
 
-### P2 — Advanced
+### P2 â€” Advanced
 
 Important sophisticated capabilities.
 
-### P3 — Enhancement
+### P3 â€” Enhancement
 
 Useful but not fundamental.
 
@@ -1235,3 +1235,4 @@ It should contain:
 **Do not start implementation until this plan is complete and internally consistent.**
 
 The plan must be detailed enough to serve as the blueprint for rebuilding the module into a genuine research-grade Computational Social Science platform.
+

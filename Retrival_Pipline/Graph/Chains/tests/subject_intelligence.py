@@ -330,9 +330,14 @@ async def run_subject_intelligence(
 
 
 if __name__ == "__main__":
+    project_root = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
+    )
     asyncio.run(run_subject_intelligence(
         subject_name="Sheikh Mostafa Al-Adawy",
-        profile_path=r"C:\Users\DELL\graph-rag-agent\mostafa_el_adawy_the_egyptian_salafai_report.md",
+        profile_path=os.path.join(
+            project_root, "mostafa_el_adawy_the_egyptian_salafai_report.md"
+        ),
         short_query="MostafaAlAdawy",
         max_sections=4,
     ))

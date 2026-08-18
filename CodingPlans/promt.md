@@ -1,7 +1,7 @@
-# YouTube Computational Social Science Module — Implementation Prompt
+﻿# YouTube Computational Social Science Module â€” Implementation Prompt
 I am about to implement a **new, separate module** in my existing project:
 
-`C:\Users\DELL\graph-rag-agent`
+the repo root of this project
 
 This module will be an important component of the project's **Computational Social Science research pipeline**.
 
@@ -9,12 +9,12 @@ This module will be an important component of the project's **Computational Soci
 Before making any changes, thoroughly inspect:
 
 ### Functional requirements
-`C:\Users\DELL\graph-rag-agent\CodingPlans\functionality.md`
+`CodingPlans/functionality.md`
 
 This contains the functionality and research requirements I have already defined.
 
 ### YouTube scraping library documentation
-`C:\Users\DELL\graph-rag-agent\CodingPlans\youtubeScraper.md`
+`CodingPlans/youtubeScraper.md`
 
 This contains the documentation and capabilities of the YouTube scraping library that this module must use.
 
@@ -116,22 +116,22 @@ The conceptual architecture should be similar to:
 
 ```
 YouTube
-   ↓
+   â†“
 Acquisition
-   ↓
+   â†“
 Normalization / Validation
-   ↓
+   â†“
 Domain
-   ↓
+   â†“
 Repository Interfaces
-   ↓
+   â†“
 Excel Repository
 ```
 Later:
 
 ```
 Repository Interfaces
-   ↓
+   â†“
 SQL / PostgreSQL / Other Provider
 ```
 Do not spread Excel-specific logic throughout the application.
@@ -183,17 +183,17 @@ For example:
 
 ```
 Video
- ├── published_at
- │
- ├── observation_2026_08_09
- │      ├── views
- │      ├── likes
- │      └── comments
- │
- └── observation_2026_09_09
-        ├── views
-        ├── likes
-        └── comments
+ â”œâ”€â”€ published_at
+ â”‚
+ â”œâ”€â”€ observation_2026_08_09
+ â”‚      â”œâ”€â”€ views
+ â”‚      â”œâ”€â”€ likes
+ â”‚      â””â”€â”€ comments
+ â”‚
+ â””â”€â”€ observation_2026_09_09
+        â”œâ”€â”€ views
+        â”œâ”€â”€ likes
+        â””â”€â”€ comments
 ```
 If the scraping library cannot provide historical statistics, **do not invent or estimate them**.
 
@@ -307,15 +307,15 @@ Where appropriate, separate:
 
 ```
 Acquisition
-    ↓
+    â†“
 Normalization
-    ↓
+    â†“
 Domain
-    ↓
+    â†“
 Persistence
-    ↓
+    â†“
 Analytics
-    ↓
+    â†“
 Research Outputs
 ```
 The YouTube library should primarily belong to the acquisition/infrastructure side.
@@ -402,13 +402,13 @@ For **every functionality**:
 
 ```
 Implement
-   ↓
+   â†“
 Test
-   ↓
+   â†“
 Fix
-   ↓
+   â†“
 Document
-   ↓
+   â†“
 Continue
 ```
 Do not implement the entire module and test only at the end.
@@ -465,7 +465,7 @@ Use the project's existing documentation structure.
 # 15. Implementation process
 Follow these phases.
 
-## Phase 1 — Discovery
+## Phase 1 â€” Discovery
 Read:
 
 `functionality.md`
@@ -480,7 +480,7 @@ Understand the project before modifying it.
 
 ---
 
-## Phase 2 — Research/requirements analysis
+## Phase 2 â€” Research/requirements analysis
 Extract:
 
 - Functional requirements
@@ -496,7 +496,7 @@ Identify assumptions and limitations.
 
 ---
 
-## Phase 3 — Architecture plan
+## Phase 3 â€” Architecture plan
 Create a concrete implementation plan showing:
 
 - Files/modules to create
@@ -513,7 +513,7 @@ Keep the plan aligned with the existing project architecture.
 
 ---
 
-## Phase 4 — Implementation
+## Phase 4 â€” Implementation
 Implement incrementally.
 
 Do not create a giant monolithic scraper.
@@ -524,16 +524,16 @@ Keep responsibilities separated.
 
 ---
 
-## Phase 5 — Test + document continuously
+## Phase 5 â€” Test + document continuously
 After every functionality:
 
-**implement → test → fix → document**
+**implement â†’ test â†’ fix â†’ document**
 
 Do not mark a functionality complete until the tests pass and the documentation is updated.
 
 ---
 
-## Phase 6 — Final validation
+## Phase 6 â€” Final validation
 At the end:
 
 - Run the complete relevant test suite.
@@ -618,6 +618,6 @@ Start by:
 
 Once implementation begins, work incrementally:
 
-**Implement → Test → Fix → Document → Continue.**
+**Implement â†’ Test â†’ Fix â†’ Document â†’ Continue.**
 
 The final result should be a maintainable, extensible, research-grade YouTube Computational Social Science module rather than a simple scraping utility.

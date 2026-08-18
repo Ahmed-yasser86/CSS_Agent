@@ -9,11 +9,12 @@ import { MetricTile } from "@/components/features/metric-tile";
 import { LoadingState, ErrorState, EmptyState } from "@/components/features/state";
 import { CommentsBrowser } from "@/components/features/comments-browser";
 import { RecommendationsExplorer } from "@/components/features/recommendations-explorer";
+import { EgoNetworkView } from "@/components/features/ego-network-view";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { formatDate, formatDuration } from "@/lib/format";
 
-type TabId = "overview" | "engagement" | "comments" | "recommendations";
+type TabId = "overview" | "network" | "engagement" | "comments" | "recommendations";
 
 export function VideoWorkspace({
   videoId,
@@ -48,6 +49,7 @@ export function VideoWorkspace({
       <Tabs value={tab} onValueChange={onTabChange} className="w-full">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="network">Network</TabsTrigger>
           <TabsTrigger value="engagement">Engagement</TabsTrigger>
           <TabsTrigger value="comments">Comments</TabsTrigger>
           <TabsTrigger value="recommendations">Recommendations</TabsTrigger>
@@ -116,6 +118,10 @@ export function VideoWorkspace({
           ) : (
             <EmptyState title="Video not found" />
           )}
+        </TabsContent>
+
+        <TabsContent value="network" className="mt-4">
+          <EgoNetworkView videoId={videoId} />
         </TabsContent>
 
         <TabsContent value="engagement" className="mt-4">

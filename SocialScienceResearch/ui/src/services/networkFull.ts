@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useJob } from "@/services/queries";
 import { request, toQuery } from "@/services/api";
 import type {
   ChannelGraphPayload,
@@ -143,10 +145,33 @@ export function scrapeNetwork(kind: ScrapeKind, body: Record<string, unknown>): 
 
 export function useScrapeNetwork(kind: ScrapeKind) {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (body: Record<string, unknown>) => scrapeNetwork(kind, body),
-    onSuccess: () => {
+  const [jobId, setJobId] = useState<string | null>(null);
+  const jobQuery = useJob(jobId);
+  const status = jobQuery.data?.status;
+
+  useEffect(() => {
+    if (status === "succeeded" || status === "failed") {
       void queryClient.invalidateQueries({ queryKey: ["jobs"] });
-    },
+      void queryClient.invalidateQueries({ queryKey: ["network", "summary"] });
+      void queryClient.invalidateQueries({ queryKey: ["network", "graph"] });
+      void queryClient.invalidateQueries({ queryKey: ["network", "full"] });
+      void queryClient.invalidateQueries({ queryKey: ["network", "videos"] });
+      void queryClient.invalidateQueries({ queryKey: ["runs"] });
+    }
+  }, [status, queryClient]);
+
+  const mutation = useMutation({
+    mutationFn: (body: Record<string, unknown>) => scrapeNetwork(kind, body),
+    onSuccess: (data) => setJobId(data.job_id),
   });
+
+  return {
+    ...mutation,
+    jobId,
+    job: jobQuery.data,
+    isRunning:
+      jobId !== null &&
+      (jobQuery.data?.status === "pending" ||
+        jobQuery.data?.status === "running"),
+  };
 }

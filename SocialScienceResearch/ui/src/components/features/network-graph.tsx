@@ -5,7 +5,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ExternalLink,
+  FilterX,
   Loader2,
+  Search,
   Sparkles,
   Users,
 } from "lucide-react";
@@ -15,6 +17,8 @@ import { useTheme } from "@/lib/theme";
 import { formatDuration, formatNumber } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Drawer,
   DrawerBody,
@@ -171,6 +175,40 @@ function roleColor(
   }
 }
 
+export interface GraphNodeFilter {
+  search?: string;
+  minDegree?: number;
+  kinds?: GraphNodeKind[];
+  communityId?: number | "all";
+}
+
+export function filterGraphNodes(
+  nodes: GraphNode[],
+  filter: GraphNodeFilter,
+): GraphNode[] {
+  const term = (filter.search ?? "").trim().toLowerCase();
+  const minDegree = filter.minDegree ?? 0;
+  const kinds = filter.kinds ?? [];
+  const communityId = filter.communityId ?? "all";
+  return nodes.filter((n) => {
+    if (minDegree > 0 && n.in_degree + n.out_degree < minDegree) return false;
+    if (kinds.length > 0 && !kinds.includes(n.kind)) return false;
+    if (communityId !== "all" && n.community_id !== communityId) return false;
+    if (term) {
+      const haystack = [
+        n.id,
+        n.title ?? "",
+        n.channel ?? "",
+        n.channel_id ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      if (!haystack.includes(term)) return false;
+    }
+    return true;
+  });
+}
+
 export function NetworkGraph({
   nodes,
   links,
@@ -204,12 +242,55 @@ export function NetworkGraph({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- theme intentionally forces a canvas recolor on toggle
   const canvasColors = useMemo(() => resolveChartColors(), [theme]);
 
+  const [search, setSearch] = useState("");
+  const [minDegree, setMinDegree] = useState(0);
+  const [kinds, setKinds] = useState<GraphNodeKind[]>([]);
+  const [communityId, setCommunityId] = useState<number | "all">("all");
+
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
+
+  const communities = useMemo(() => {
+    const ids = new Set<number>();
+    for (const n of nodes) if (n.community_id != null) ids.add(n.community_id);
+    return [...ids].sort((a, b) => a - b);
+  }, [nodes]);
+
+  const hasActiveFilters =
+    search.trim() !== "" || minDegree > 0 || kinds.length > 0 || communityId !== "all";
+
+  const visibleNodes = useMemo(
+    () =>
+      filterGraphNodes(nodes, {
+        search,
+        minDegree,
+        kinds,
+        communityId,
+      }),
+    [nodes, search, minDegree, kinds, communityId],
+  );
+
+  const visibleLinks = useMemo(() => {
+    const visible = new Set(visibleNodes.map((n) => n.id));
+    return links.filter((l) => visible.has(l.source) && visible.has(l.target));
+  }, [links, visibleNodes]);
+
+  function resetFilters() {
+    setSearch("");
+    setMinDegree(0);
+    setKinds([]);
+    setCommunityId("all");
+  }
+
+  function toggleKind(kind: GraphNodeKind) {
+    setKinds((prev) =>
+      prev.includes(kind) ? prev.filter((k) => k !== kind) : [...prev, kind],
+    );
+  }
 
   // Re-seed cached positions so toggling filters does not explode the layout.
   const graphData = useMemo(() => {
-    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-    const positioned = nodes.map((n) => {
+    const nodeMap = new Map(visibleNodes.map((n) => [n.id, n]));
+    const positioned = visibleNodes.map((n) => {
       const cached = positions.get(n.id);
       return {
         id: n.id,
@@ -220,7 +301,7 @@ export function NetworkGraph({
     });
     return {
       nodes: positioned,
-      links: links
+      links: visibleLinks
         .filter((l) => nodeMap.has(l.source) && nodeMap.has(l.target))
         .map((l) => ({
           source: l.source,
@@ -228,7 +309,7 @@ export function NetworkGraph({
           run_id: l.run_id ?? null,
         })),
     };
-  }, [nodes, links, positions]);
+  }, [visibleNodes, visibleLinks, positions]);
 
   function linkRunId(link: unknown): string | null {
     const runId = (link as { run_id?: string | null }).run_id;
@@ -418,6 +499,105 @@ export function NetworkGraph({
         </div>
       ) : null}
 
+      {nodes.length > 0 ? (
+        <div className="rounded-md border bg-background/60 p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Search className="size-3.5" aria-hidden />
+              <span>
+                Showing {visibleNodes.length} of {nodes.length} nodes
+                {visibleLinks.length !== links.length
+                  ? ` · ${visibleLinks.length} of ${links.length} edges`
+                  : ""}
+              </span>
+            </div>
+            {hasActiveFilters ? (
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={resetFilters}
+                aria-label="Reset node filters"
+              >
+                <FilterX className="size-3.5" aria-hidden />
+                Reset
+              </Button>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="w-56">
+              <Input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by id, title, channel…"
+                aria-label="Search nodes"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              Min degree
+              <Input
+                type="number"
+                min={0}
+                value={minDegree === 0 ? "" : String(minDegree)}
+                onChange={(e) => {
+                  const v = Number.parseInt(e.target.value, 10);
+                  setMinDegree(Number.isNaN(v) || v < 0 ? 0 : v);
+                }}
+                className="w-16 text-xs"
+                aria-label="Minimum degree"
+              />
+            </label>
+            <div
+              className="flex flex-wrap items-center gap-x-3 gap-y-1"
+              role="group"
+              aria-label="Filter by node kind"
+            >
+              {(["source", "target", "both", "other"] as GraphNodeKind[]).map(
+                (kind) => (
+                  <label
+                    key={kind}
+                    className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground"
+                  >
+                    <Checkbox
+                      checked={kinds.includes(kind)}
+                      onCheckedChange={() => toggleKind(kind)}
+                    />
+                    {roleLabel(kind)}
+                  </label>
+                ),
+              )}
+            </div>
+            {communities.length > 0 ? (
+              <Select
+                value={String(communityId)}
+                onValueChange={(v) =>
+                  setCommunityId(
+                    v == null || v === "all"
+                      ? "all"
+                      : Number.parseInt(v, 10),
+                  )
+                }
+              >
+                <SelectTrigger
+                  className="h-8 w-44 text-xs"
+                  aria-label="Filter by community"
+                >
+                  <SelectValue placeholder="All communities" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All communities</SelectItem>
+                  {communities.map((id) => (
+                    <SelectItem key={id} value={String(id)}>
+                      Community {id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       <div
         className="relative w-full overflow-hidden rounded-md border bg-muted/30"
         style={{ height }}
@@ -551,8 +731,18 @@ export function NetworkGraph({
             }}
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            No network to render
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+            {nodes.length > 0 ? (
+              <>
+                <span>No nodes match the current filters</span>
+                <Button variant="outline" size="sm" onClick={resetFilters}>
+                  <FilterX className="size-3.5" aria-hidden />
+                  Reset filters
+                </Button>
+              </>
+            ) : (
+              <span>No network to render</span>
+            )}
           </div>
         )}
 

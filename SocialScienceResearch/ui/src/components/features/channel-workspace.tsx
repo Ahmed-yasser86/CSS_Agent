@@ -10,8 +10,9 @@ import { VideoCorpusBrowser } from "@/components/features/video-corpus-browser";
 import { SamplingWorkbench } from "@/components/features/sampling/SamplingWorkbench";
 import { FoldersTab } from "@/components/features/folders-tab";
 import { ExportTab } from "@/components/features/export-tab";
+import { ChannelNetworkView } from "@/components/features/channel-network-view";
 
-type TabId = "overview" | "videos" | "sampling" | "folders" | "export";
+type TabId = "overview" | "network" | "videos" | "sampling" | "folders" | "export";
 
 export function ChannelWorkspace({
   channelId,
@@ -52,6 +53,7 @@ export function ChannelWorkspace({
       <Tabs value={tab} onValueChange={onTabChange} className="w-full">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="network">Network</TabsTrigger>
           <TabsTrigger value="videos">Videos</TabsTrigger>
           <TabsTrigger value="sampling">Sampling</TabsTrigger>
           <TabsTrigger value="folders">Folders</TabsTrigger>
@@ -107,6 +109,10 @@ export function ChannelWorkspace({
 
         <TabsContent value="videos" className="mt-4">
           <VideoCorpusBrowser channelId={channelId} searchParams={searchParams} />
+        </TabsContent>
+
+        <TabsContent value="network" className="mt-4">
+          <ChannelNetworkView channelId={channelId} />
         </TabsContent>
 
         <TabsContent value="sampling" className="mt-4">

@@ -37,7 +37,10 @@ export function NetworkSummaryView() {
   const summaryQuery = useNetworkSummary(runId === "all" ? undefined : runId, 10);
 
   const recommendationRuns =
-    runsQuery.data?.filter((r) => r.status !== "pending" && r.status !== "running") ?? [];
+    runsQuery.data
+      ?.filter((r) => r.status !== "pending" && r.status !== "running")
+      .slice()
+      .sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? "")) ?? [];
 
   if (summaryQuery.isLoading) return <LoadingState label="Building recommendation graph…" />;
   if (summaryQuery.isError)

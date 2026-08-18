@@ -24,6 +24,7 @@ function invalidateExpansionQueries(queryClient: ReturnType<typeof useQueryClien
   void queryClient.invalidateQueries({ queryKey: ["network", "expansion"] });
   void queryClient.invalidateQueries({ queryKey: ["network", "graph"] });
   void queryClient.invalidateQueries({ queryKey: ["network", "videos"] });
+  void queryClient.invalidateQueries({ queryKey: ["network", "summary"] });
   void queryClient.invalidateQueries({ queryKey: ["runs"] });
   void queryClient.invalidateQueries({ queryKey: ["jobs"] });
   void queryClient.invalidateQueries({ queryKey: ["projects"] });

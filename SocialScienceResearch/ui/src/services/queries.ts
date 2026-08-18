@@ -267,6 +267,9 @@ export function useCollect() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["runs"] });
+      void queryClient.invalidateQueries({ queryKey: ["network", "summary"] });
+      void queryClient.invalidateQueries({ queryKey: ["network", "graph"] });
+      void queryClient.invalidateQueries({ queryKey: ["network", "full"] });
     },
   });
 }

@@ -400,9 +400,17 @@ async def run_ecosystem_intelligence(
 
 
 if __name__ == "__main__":
+    project_root = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
+    )
     asyncio.run(run_ecosystem_intelligence(
         subject_name="Sheikh Mostafa Al-Adawy",
-        subject_intelligence_path=r"C:\Users\DELL\graph-rag-agent\outputs\run_f72fdfbdb74642b59e8a8eb3eb9e8188\b113dfd89d214e61ac82e1958b61dc84.md",
+        subject_intelligence_path=os.path.join(
+            project_root,
+            "outputs",
+            "run_f72fdfbdb74642b59e8a8eb3eb9e8188",
+            "b113dfd89d214e61ac82e1958b61dc84.md",
+        ),
         audience_intelligence_path="MostafaAlAdawy_audience_intelligence.md",
         short_query="MostafaAlAdawy",
         max_sections=6,

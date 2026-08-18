@@ -8,7 +8,9 @@ import asyncio
 
 # Prefer the local forked copy of the repo (not the installed package).
 # Add the local gpt-researcher root to sys.path so Python resolves the local package.
-LOCAL_GPT_RESEARCHER = os.path.abspath(r"C:\Users\DELL\graph-rag-agent\gpt-researcher")
+LOCAL_GPT_RESEARCHER = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "gpt-researcher")
+)
 if LOCAL_GPT_RESEARCHER not in sys.path:
     sys.path.insert(0, LOCAL_GPT_RESEARCHER)
 

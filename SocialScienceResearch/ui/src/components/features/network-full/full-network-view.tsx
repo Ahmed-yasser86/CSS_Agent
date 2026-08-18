@@ -35,6 +35,7 @@ import type { ChannelGraphPayload, GraphProjection, NetworkGraphPayload } from "
 import { Button } from "@/components/ui/button";
 import { Loader2, Sparkles } from "lucide-react";
 import { Toast } from "@/components/features/state";
+import { JobProgressCard } from "@/components/features/job-progress-card";
 
 function mapGraphPayload(payload: {
   nodes: {
@@ -149,7 +150,9 @@ export function FullNetworkView() {
   const expansionJob = useExpansionJob();
 
   const runs = useMemo(() => {
-    const ids = (runsQuery.data ?? []).map((run) => run.run_id);
+    const data = (runsQuery.data ?? []).slice();
+    data.sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? ""));
+    const ids = data.map((run) => run.run_id);
     return [...new Set(ids)];
   }, [runsQuery.data]);
 
@@ -466,9 +469,9 @@ export function FullNetworkView() {
                   variant="outline"
                   size="sm"
                   onClick={() => void handleScrapeRun()}
-                  disabled={scrapeRunMutation.isPending}
+                  disabled={scrapeRunMutation.isPending || scrapeRunMutation.isRunning}
                 >
-                  {scrapeRunMutation.isPending ? (
+                  {scrapeRunMutation.isRunning ? (
                     <Loader2 className="animate-spin" aria-hidden />
                   ) : (
                     <Sparkles aria-hidden />
@@ -481,9 +484,9 @@ export function FullNetworkView() {
                   variant="outline"
                   size="sm"
                   onClick={() => void handleScrapeChannel()}
-                  disabled={scrapeChannelMutation.isPending}
+                  disabled={scrapeChannelMutation.isPending || scrapeChannelMutation.isRunning}
                 >
-                  {scrapeChannelMutation.isPending ? (
+                  {scrapeChannelMutation.isRunning ? (
                     <Loader2 className="animate-spin" aria-hidden />
                   ) : (
                     <Sparkles aria-hidden />
@@ -492,6 +495,33 @@ export function FullNetworkView() {
                 </Button>
               ) : null}
             </div>
+            {scrapeRunMutation.jobId ? (
+              <div className="mt-3">
+                <JobProgressCard
+                  key={scrapeRunMutation.jobId}
+                  jobId={scrapeRunMutation.jobId}
+                  title="Re-scraping run"
+                />
+              </div>
+            ) : null}
+            {scrapeChannelMutation.jobId ? (
+              <div className="mt-3">
+                <JobProgressCard
+                  key={scrapeChannelMutation.jobId}
+                  jobId={scrapeChannelMutation.jobId}
+                  title="Scraping channel"
+                />
+              </div>
+            ) : null}
+            {expansionJob.jobId ? (
+              <div className="mt-3">
+                <JobProgressCard
+                  key={expansionJob.jobId}
+                  jobId={expansionJob.jobId}
+                  title="Scraping recommendations"
+                />
+              </div>
+            ) : null}
           </Card>
         </TabsContent>
         <TabsContent value="layers" className="mt-4">

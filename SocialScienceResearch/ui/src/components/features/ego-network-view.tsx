@@ -12,6 +12,7 @@ import {
   Toast,
 } from "@/components/features/state";
 import { NetworkGraph, type GraphLink, type GraphNode } from "@/components/features/network-graph";
+import { JobProgressCard } from "@/components/features/job-progress-card";
 import { DataTable, type Column } from "@/components/features/data-table";
 import { Card } from "@/components/ui/card";
 import {
@@ -349,6 +350,15 @@ export function EgoNetworkView({ videoId }: { videoId: string }) {
             setScrapeVideoTarget(id);
           }}
         />
+        {expansionJob.jobId ? (
+          <div className="mt-3">
+            <JobProgressCard
+              key={expansionJob.jobId}
+              jobId={expansionJob.jobId}
+              title="Scraping recommendations"
+            />
+          </div>
+        ) : null}
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
