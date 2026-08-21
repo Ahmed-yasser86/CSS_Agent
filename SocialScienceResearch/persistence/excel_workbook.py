@@ -65,7 +65,9 @@ class WorkbookStore:
         self._since_flush = 0
 
         # Oversized cell values (exceeding Excel's 32767-char limit) are
-        # persisted to a JSON sidecar keyed by (sheet, header, entity key).
+        # persisted to per-bucket JSON sidecars keyed by (sheet, header, entity
+        # key). Buckets are loaded lazily on demand so boot never pulls the
+        # whole sidecar (which can exceed 200MB of raw yt-dlp JSON) into RAM.
         self._overflow_path = self.path.with_name(self.path.stem + ".overflow.json")
         self._overflow: dict[tuple[str, str], dict[str, str]] = {}
         self._load_overflow()
@@ -79,25 +81,85 @@ class WorkbookStore:
             self._wb.remove(self._wb.active)
         self._close_on_exit = True
 
+    @staticmethod
+    def _bucket_filename(sheet: str, header: str) -> str:
+        """Deterministic sidecar filename for one (sheet, header) bucket."""
+        token = f"{sheet}__{header}".replace("\\", "_").replace("/", "_")
+        token = "".join(c if c.isalnum() or c in "-_." else "_" for c in token)
+        return f"{token}.overflow.json"
+
+    def _bucket_path(self, sheet: str, header: str) -> Path:
+        return self.path.with_name(self._bucket_filename(sheet, header))
+
     def _load_overflow(self) -> None:
+        """Migrate the legacy single-file sidecar into per-bucket files.
+
+        Boot never loads the full sidecar into memory: each (sheet, header)
+        bucket lives in its own JSON file and is read on demand. When a legacy
+        ``*.overflow.json`` is detected it is split once into buckets; if any
+        bucket is unreadable it is skipped (logged) without failing the boot.
+        """
         if not self._overflow_path.exists():
             return
         try:
             with open(self._overflow_path, encoding="utf-8") as fh:
                 raw = json.load(fh)
-        except (ValueError, OSError):
+        except (ValueError, OSError, MemoryError, RecursionError):
+            logger.warning(
+                "overflow sidecar %s could not be migrated; oversized cells "
+                "will read as empty until the next successful flush",
+                self._overflow_path,
+            )
             return
+        migrated = 0
         for key, bucket in raw.items():
             sheet, sep, header = key.partition("\u0000")
-            if sep and isinstance(bucket, dict):
-                self._overflow[(sheet, header)] = bucket
+            if not sep or not isinstance(bucket, dict):
+                continue
+            try:
+                with open(self._bucket_path(sheet, header), "w", encoding="utf-8") as fh:
+                    json.dump(bucket, fh, ensure_ascii=False)
+                migrated += 1
+            except OSError as exc:  # noqa: BLE001 - never fail boot on a bucket
+                logger.warning(
+                    "could not migrate overflow bucket (%s, %s): %s",
+                    sheet,
+                    header,
+                    exc,
+                )
+        if migrated:
+            try:
+                self._overflow_path.unlink()
+            except OSError:  # pragma: no cover - best-effort cleanup
+                pass
+        logger.info("migrated %d overflow bucket(s) to per-bucket sidecars", migrated)
+
+    def _bucket(self, sheet: str, header: str) -> dict[str, str]:
+        """Return the in-memory bucket for (sheet, header), loading lazily.
+
+        The full overflow is never loaded at boot: a bucket is read from its
+        own sidecar file the first time it is touched and cached thereafter.
+        """
+        key = (sheet, header)
+        bucket = self._overflow.get(key)
+        if bucket is not None:
+            return bucket
+        loaded: dict[str, str] = {}
+        try:
+            with open(self._bucket_path(sheet, header), encoding="utf-8") as fh:
+                loaded = json.load(fh)
+        except (OSError, ValueError):
+            pass
+        self._overflow[key] = loaded
+        return loaded
 
     def _value_for_write(
         self, name: str, header: str, key: str, value: Any
     ) -> Any:
-        """Route oversized strings to the sidecar; keep cells within Excel limits."""
+        """Route oversized strings to the bucket sidecar; keep cells within Excel limits."""
         if isinstance(value, str) and len(value) > MAX_CELL_CHARS:
-            self._overflow.setdefault((name, header), {})[str(key)] = value
+            bucket = self._bucket(name, header)
+            bucket[str(key)] = value
             return _OVERFLOW_SENTINEL
         return value
 
@@ -105,8 +167,8 @@ class WorkbookStore:
         self, name: str, header: str, key: str, value: Any
     ) -> Any:
         if value == _OVERFLOW_SENTINEL:
-            bucket = self._overflow.get((name, header))
-            if bucket and key in bucket:
+            bucket = self._bucket(name, header)
+            if key in bucket:
                 return bucket[key]
         return value
 
@@ -297,22 +359,46 @@ class WorkbookStore:
     def row_exists(self, name: str, key_field: str, key: str) -> bool:
         return str(key) in self._ensure_index(name, key_field)
 
+    def delete_row(self, name: str, key_field: str, key: str) -> None:
+        """Remove a row: blank its cells and drop it from the index.
+
+        Cells are cleared (workbook rows can't be physically removed without
+        shifting cells and invalidating every row's position); removing the
+        index entry makes the row invisible to ``find_row``/``read_rows``.
+        """
+        with self._lock:
+            index = self._ensure_index(name, key_field)
+            location = index.pop(str(key), None)
+            if location is None:
+                return
+            sheet_name, excel_row = location
+            ws = self._wb[sheet_name]
+            for column in range(1, ws.max_column + 1):
+                ws.cell(row=excel_row, column=column).value = None
+            self._mark_dirty()
+
     # ------------------------------------------------------------------
     # Persistence
     # ------------------------------------------------------------------
     def save(self) -> None:
-        """Write the workbook and any oversized-cell sidecar to disk."""
+        """Write the workbook and any oversized-cell sidecars to disk."""
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self._wb.save(self.path)
             if self._overflow:
-                payload = {
-                    f"{sheet}\u0000{header}": bucket
-                    for (sheet, header), bucket in self._overflow.items()
-                }
-                self._overflow_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(self._overflow_path, "w", encoding="utf-8") as fh:
-                    json.dump(payload, fh, ensure_ascii=False)
+                for (sheet, header), bucket in self._overflow.items():
+                    try:
+                        with open(
+                            self._bucket_path(sheet, header), "w", encoding="utf-8"
+                        ) as fh:
+                            json.dump(bucket, fh, ensure_ascii=False)
+                    except OSError as exc:  # noqa: BLE001 - never fail the flush
+                        logger.warning(
+                            "could not persist overflow bucket (%s, %s): %s",
+                            sheet,
+                            header,
+                            exc,
+                        )
             self._since_flush = 0
             logger.debug("saved workbook to %s", self.path)
 

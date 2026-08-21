@@ -60,6 +60,7 @@ export interface GraphNode {
   run_ids?: string[];
   run_types?: string[];
   community_id?: number | null;
+  recommendations_scraped?: boolean;
 }
 
 export interface GraphLink {
@@ -122,6 +123,22 @@ function hashString(value: string): number {
     hash = (hash * 31 + value.charCodeAt(i)) | 0;
   }
   return Math.abs(hash);
+}
+
+/** Golden-angle spiral used to seed initial node positions.
+ *
+ * Nodes are fed in descending total-degree order, so the innermost spiral
+ * slots (the visual center) are taken by the most connected videos. Hubs then
+ * emerge as central nodes of the force layout instead of any single queried
+ * video being pinned to the middle.
+ */
+function spiralSeed(
+  index: number,
+  radiusStep = 22,
+): { x: number; y: number } {
+  const angle = index * 2.39996323;
+  const radius = Math.sqrt(index) * radiusStep;
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
 }
 
 export function runColorFor(runId: string): string {
@@ -290,13 +307,20 @@ export function NetworkGraph({
   // Re-seed cached positions so toggling filters does not explode the layout.
   const graphData = useMemo(() => {
     const nodeMap = new Map(visibleNodes.map((n) => [n.id, n]));
-    const positioned = visibleNodes.map((n) => {
+    // Feed high-degree nodes first so the spiral seed (and thus the settled
+    // force layout) keeps the most connected videos near the center.
+    const ordered = [...visibleNodes].sort(
+      (a, b) =>
+        b.in_degree + b.out_degree - (a.in_degree + a.out_degree),
+    );
+    const positioned = ordered.map((n, index) => {
       const cached = positions.get(n.id);
+      const seed = spiralSeed(index);
       return {
         id: n.id,
         val: Math.max(2, Math.sqrt(n.in_degree + n.out_degree + 1) * 2),
-        x: cached?.x,
-        y: cached?.y,
+        x: cached?.x != null ? cached.x : seed.x,
+        y: cached?.y != null ? cached.y : seed.y,
       };
     });
     return {

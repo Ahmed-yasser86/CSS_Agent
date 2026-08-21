@@ -138,12 +138,11 @@ class ExplorerService:
         filters = self._validated_filters(entity, filters or [])
         sort, descending = self._validated_sort(entity, columns, sort)
 
-        rows = self._query.resolve_latest_rows(entity)
+        rows = self._explore_rows(entity)
         if q:
             rows = self._search_rows(entity, rows, q)
         if filters:
             rows = evaluate_query(entity, self._group_from_filters(filters), rows)
-        rows = self._enrich_ids(entity, rows)
         rows = self._dedupe_rows(entity, rows)
         rows = self._ordered_rows(entity, rows, sort, descending)
         rows = self._ranked_rows(entity, rows)
@@ -378,39 +377,30 @@ class ExplorerService:
         return {key: value for key, value in row.items() if not key.startswith("__")}
 
     # ------------------------------------------------------------------
-    # Primary-id enrichment (recommendation rows lack a registered id var)
+    # Projected row resolution (no raw_json TOAST payloads)
     # ------------------------------------------------------------------
-    def _enrich_ids(
-        self, entity: str, rows: list[dict[str, Any]]
-    ) -> list[dict[str, Any]]:
-        if entity != "recommendation":
-            return rows
-        edges = self._repos.recommendations.list_recommendation_edges()
-        by_fields: dict[tuple[Any, ...], str] = {}
-        for edge in edges:
-            key = (
-                edge.source_video_id,
-                edge.recommended_video_id,
-                edge.position,
-                edge.status.value,
-                edge.channel_id,
-                edge.title,
-            )
-            by_fields[key] = edge.observation_id
-        enriched: list[dict[str, Any]] = []
-        for row in rows:
-            copy = dict(row)
-            key = (
-                row.get("source_video_id"),
-                row.get("recommended_video_id"),
-                row.get("position"),
-                row.get("status"),
-                row.get("channel_id"),
-                row.get("title"),
-            )
-            copy["observation_id"] = by_fields.get(key)
-            enriched.append(copy)
-        return enriched
+    def _explore_rows(self, entity: str) -> list[dict[str, Any]]:
+        """Resolve the latest-state rows for one entity as projected dicts.
+
+        Delegates to the repository's ``explore_*_rows`` methods, which column
+        project (excluding heavy ``raw_json`` blobs) so a full-corpus browse is
+        fast. Recommendation rows already carry their ``observation_id`` primary
+        key from the projection.
+        """
+        if entity == "video":
+            return self._repos.videos.explore_video_rows()
+        if entity == "comment":
+            return self._repos.comments.explore_comment_rows()
+        if entity == "channel":
+            return self._repos.channels.explore_channel_rows()
+        if entity == "recommendation":
+            return self._repos.recommendations.explore_recommendation_rows()
+        if entity == "author":
+            return self._repos.authors.explore_author_rows()
+        raise ValueError(
+            f"Unknown entity {entity!r}; expected one of "
+            "channel, video, comment, recommendation, author"
+        )
 
     # ------------------------------------------------------------------
     # Entity fetch for the raw-record endpoint

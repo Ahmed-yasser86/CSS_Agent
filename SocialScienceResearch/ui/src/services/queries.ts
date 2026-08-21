@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -17,6 +18,8 @@ import type {
   VideoFilter,
 } from "@/lib/types";
 import * as api from "@/services/api";
+import { API_BASE } from "@/services/api";
+import type { Job } from "@/lib/types";
 import {
   listDatasets,
   getDataset,
@@ -47,6 +50,7 @@ export const queryKeys = {
   run: (runId: string) => ["runs", runId] as const,
   runErrors: (runId: string) => ["runs", runId, "errors"] as const,
   runVideos: (runId: string) => ["runs", runId, "videos"] as const,
+  runSubRuns: (runId: string) => ["runs", runId, "sub-runs"] as const,
   channelOverview: (channelId: string) => ["channels", channelId, "overview"] as const,
   channels: () => ["channels"] as const,
   channelVideos: (channelId: string, filter?: VideoFilter) =>
@@ -66,7 +70,7 @@ export const queryKeys = {
     ["videos", videoId, "recommendations"] as const,
   networkSummary: (runId?: string, topN = 10) =>
     ["network", "summary", runId ?? "all", topN] as const,
-  networkVideoContext: (videoId: string, runId?: string) =>
+  networkVideoContext: (videoId: string, runId?: string | string[]) =>
     ["network", "videos", videoId, runId ?? "all"] as const,
   jobs: () => ["jobs"] as const,
   job: (jobId: string) => ["jobs", jobId] as const,
@@ -114,6 +118,14 @@ export function useRunVideos(runId: string) {
   return useQuery({
     queryKey: queryKeys.runVideos(runId),
     queryFn: () => api.getRunVideos(runId),
+    enabled: !!runId,
+  });
+}
+
+export function useRunSubRuns(runId: string) {
+  return useQuery({
+    queryKey: queryKeys.runSubRuns(runId),
+    queryFn: () => api.getRunSubRuns(runId),
     enabled: !!runId,
   });
 }
@@ -246,11 +258,11 @@ export function useNetworkSummary(runId?: string, topN = 10) {
 
 export function useNetworkVideoContext(
   videoId: string,
-  runId?: string,
+  runIds?: string[],
 ) {
   return useQuery({
-    queryKey: queryKeys.networkVideoContext(videoId, runId),
-    queryFn: () => api.getVideoNetworkContext(videoId, runId),
+    queryKey: queryKeys.networkVideoContext(videoId, runIds ?? "all"),
+    queryFn: () => api.getVideoNetworkContext(videoId, runIds),
     enabled: !!videoId,
   });
 }
@@ -285,16 +297,43 @@ export function useSubmitCollect() {
 }
 
 export function useJob(jobId: string | null) {
-  return useQuery({
+  const queryClient = useQueryClient();
+  const query = useQuery({
     queryKey: queryKeys.job(jobId ?? ""),
     queryFn: () => api.getJob(jobId as string),
     enabled: !!jobId,
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      if (status === "pending" || status === "running") return 1500;
-      return false;
-    },
+    refetchInterval: false,
   });
+
+  useEffect(() => {
+    if (!jobId) return;
+    const url = `${API_BASE}/jobs/${jobId}/stream`;
+    const es = new EventSource(url);
+    const onMessage = (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data) as Job;
+        queryClient.setQueryData(queryKeys.job(jobId), data);
+        if (data.status === "succeeded" || data.status === "failed" || data.status === "cancelled") {
+          es.close();
+        }
+      } catch {
+        // ignore malformed payloads
+      }
+    };
+    const onError = () => {
+      es.close();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.job(jobId) });
+    };
+    es.addEventListener("message", onMessage);
+    es.addEventListener("error", onError);
+    return () => {
+      es.removeEventListener("message", onMessage);
+      es.removeEventListener("error", onError);
+      es.close();
+    };
+  }, [jobId, queryClient]);
+
+  return query;
 }
 
 export function useJobs() {

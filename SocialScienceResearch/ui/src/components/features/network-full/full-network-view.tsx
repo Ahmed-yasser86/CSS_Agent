@@ -33,9 +33,11 @@ import { useExpansionJob, scrapeExpansionAll, scrapeExpansionVideo } from "@/ser
 import type { ScrapeFilters as ExpansionFilters } from "@/lib/network-expansion-types";
 import type { ChannelGraphPayload, GraphProjection, NetworkGraphPayload } from "@/lib/network-full-types";
 import { Button } from "@/components/ui/button";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, FolderPlus } from "lucide-react";
 import { Toast } from "@/components/features/state";
 import { JobProgressCard } from "@/components/features/job-progress-card";
+import { AddToProjectDialog } from "@/components/features/network-full/add-to-project-dialog";
+import { NetworkInsightsPanel } from "@/components/features/network-full/network-insights-panel";
 
 function mapGraphPayload(payload: {
   nodes: {
@@ -53,6 +55,7 @@ function mapGraphPayload(payload: {
     run_ids?: string[];
     run_types?: string[];
     community_id?: number | null;
+    recommendations_scraped?: boolean;
   }[];
   edges: {
     source: string;
@@ -80,6 +83,7 @@ function mapGraphPayload(payload: {
       run_ids: n.run_ids,
       run_types: n.run_types,
       community_id: n.community_id,
+      recommendations_scraped: n.recommendations_scraped,
     })),
     links: payload.edges.map((e): GraphLink => ({
       source: e.source,
@@ -138,11 +142,15 @@ export function FullNetworkView() {
   const runsQuery = useRuns();
   const [runId, setRunId] = useState<string | null>(null);
   const [temporalRuns, setTemporalRuns] = useState<string[]>([]);
-  const [tab, setTab] = useState<"metrics" | "temporal" | "edges" | "graph" | "layers" | "commenters" | "expansion">("metrics");
+  const [tab, setTab] = useState<"metrics" | "insights" | "temporal" | "edges" | "graph" | "layers" | "commenters" | "expansion">("metrics");
   const [graphRunId, setGraphRunId] = useState<string | null>(null);
   const [graphChannelId, setGraphChannelId] = useState<string | null>(null);
   const [graphProjection, setGraphProjection] = useState<GraphProjection>("video");
+  const [graphLayerIndex, setGraphLayerIndex] = useState<number | null>(null);
+  const [graphConnected, setGraphConnected] = useState<"only" | "isolated" | null>(null);
+  const [graphScraped, setGraphScraped] = useState<"scraped" | "unscraped" | null>(null);
   const [graphVideoId, setGraphVideoId] = useState<string | null>(null);
+  const [addToProjectOpen, setAddToProjectOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [scrapeAllOpen, setScrapeAllOpen] = useState(false);
   const [scrapeVideoTarget, setScrapeVideoTarget] = useState<string | null>(null);
@@ -175,6 +183,9 @@ export function FullNetworkView() {
     "source",
     graphProjection,
     { retry: 1 },
+    graphLayerIndex ?? undefined,
+    graphConnected ?? undefined,
+    graphScraped ?? undefined,
   );
 
   const scrapeRunMutation = useScrapeNetwork("run");
@@ -269,8 +280,11 @@ export function FullNetworkView() {
               value={runId}
               placeholder="All runs"
               onChange={(value) => {
+                // Drive both the metrics/edges slice (runId) and the graph
+                // slice (graphRunId) so a run chosen here actually filters the
+                // network graph instead of only the metrics tab.
                 setRunId(value);
-                setTab("metrics");
+                setGraphRunId(value || null);
               }}
             />
           </div>
@@ -294,6 +308,7 @@ export function FullNetworkView() {
       <Tabs value={tab} onValueChange={(value) => setTab(value as typeof tab)}>
         <TabsList>
           <TabsTrigger value="metrics">Metrics</TabsTrigger>
+          <TabsTrigger value="insights">Insights</TabsTrigger>
           <TabsTrigger value="temporal">Temporal</TabsTrigger>
           <TabsTrigger value="edges">Edges</TabsTrigger>
           <TabsTrigger value="graph">Graph</TabsTrigger>
@@ -332,6 +347,14 @@ export function FullNetworkView() {
           ) : (
             <LoadingState label="Loading network metrics…" />
           )}
+        </TabsContent>
+
+        <TabsContent value="insights" className="mt-4 space-y-4">
+          <NetworkInsightsPanel
+            metrics={metrics.data}
+            graph={graphProjection === "video" && graphQuery.data ? (graphQuery.data as NetworkGraphPayload) : undefined}
+            loading={metrics.isLoading}
+          />
         </TabsContent>
 
         <TabsContent value="temporal" className="mt-4 space-y-4">
@@ -398,6 +421,102 @@ export function FullNetworkView() {
                     : "All edges attributed"}
                 </Badge>
               ) : null}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Layer
+                </Label>
+                <Select
+                  value={graphLayerIndex === null ? "" : String(graphLayerIndex)}
+                  onValueChange={(v) =>
+                    setGraphLayerIndex(v === "" ? null : Number(v))
+                  }
+                  items={[
+                    { value: "", label: "All layers" },
+                    { value: "0", label: "Layer 0 (sources)" },
+                    { value: "1", label: "Layer 1" },
+                    { value: "2", label: "Layer 2" },
+                    { value: "3", label: "Layer 3" },
+                  ]}
+                >
+                  <SelectTrigger className="w-40" aria-label="Filter by layer">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All layers</SelectItem>
+                    <SelectItem value="0">Layer 0 (sources)</SelectItem>
+                    <SelectItem value="1">Layer 1</SelectItem>
+                    <SelectItem value="2">Layer 2</SelectItem>
+                    <SelectItem value="3">Layer 3</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Connectivity
+                </Label>
+                <Select
+                  value={graphConnected ?? ""}
+                  onValueChange={(v) =>
+                    setGraphConnected(v === "" ? null : (v as "only" | "isolated"))
+                  }
+                  items={[
+                    { value: "", label: "All nodes" },
+                    { value: "only", label: "Connected only" },
+                    { value: "isolated", label: "Isolated only" },
+                  ]}
+                >
+                  <SelectTrigger className="w-44" aria-label="Filter by connectivity">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All nodes</SelectItem>
+                    <SelectItem value="only">Connected only</SelectItem>
+                    <SelectItem value="isolated">Isolated only</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Scrape state
+                </Label>
+                <Select
+                  value={graphScraped ?? ""}
+                  onValueChange={(v) =>
+                    setGraphScraped(v === "" ? null : (v as "scraped" | "unscraped"))
+                  }
+                  items={[
+                    { value: "", label: "All nodes" },
+                    { value: "scraped", label: "Scraped" },
+                    { value: "unscraped", label: "Not scraped" },
+                  ]}
+                >
+                  <SelectTrigger className="w-40" aria-label="Filter by scrape state">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All nodes</SelectItem>
+                    <SelectItem value="scraped">Scraped</SelectItem>
+                    <SelectItem value="unscraped">Not scraped</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {graphConnected === "isolated" || graphScraped !== null || graphLayerIndex !== null ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setGraphLayerIndex(null);
+                    setGraphConnected(null);
+                    setGraphScraped(null);
+                  }}
+                >
+                  Clear advanced filters
+                </Button>
+              ) : null}
             </div>
             {graphQuery.isError ? (
               <ErrorState
@@ -415,7 +534,7 @@ export function FullNetworkView() {
                   links={mapChannelGraphPayload(graphQuery.data as ChannelGraphPayload).links}
                   runs={graphQuery.data.runs}
                   channels={graphQuery.data.channels}
-                  selectedRun={graphRunId ?? undefined}
+                  selectedRun={graphRunId ?? runId ?? undefined}
                   selectedChannel={graphChannelId ?? undefined}
                   onRunChange={(v) => setGraphRunId(v === "__all" ? null : v)}
                   onChannelChange={(v) => setGraphChannelId(v === "__all" ? null : v)}
@@ -431,7 +550,7 @@ export function FullNetworkView() {
                   links={mapGraphPayload(graphQuery.data as NetworkGraphPayload).links}
                   runs={graphQuery.data.runs}
                   channels={graphQuery.data.channels}
-                  selectedRun={graphRunId ?? undefined}
+                  selectedRun={graphRunId ?? runId ?? undefined}
                   selectedChannel={graphChannelId ?? undefined}
                   onRunChange={(v) => setGraphRunId(v === "__all" ? null : v)}
                   onChannelChange={(v) => setGraphChannelId(v === "__all" ? null : v)}
@@ -449,6 +568,16 @@ export function FullNetworkView() {
             ) : (
               <LoadingState label="Loading network graph…" />
             )}
+
+            {graphQuery.data && graphProjection === "video" ? (
+              <div className="mt-4 border-t pt-3">
+                <NodeListPanel
+                  nodes={mapGraphPayload(graphQuery.data as NetworkGraphPayload).nodes}
+                  isolatedOnly={graphConnected === "isolated"}
+                  onScrape={openVideoScrapeDialog}
+                />
+              </div>
+            ) : null}
 
             <div className="mt-3 flex flex-wrap gap-2 border-t pt-3">
               <Button
@@ -492,6 +621,16 @@ export function FullNetworkView() {
                     <Sparkles aria-hidden />
                   )}
                   Scrape this channel
+                </Button>
+              ) : null}
+              {graphProjection === "video" && graphQuery.data ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAddToProjectOpen(true)}
+                >
+                  <FolderPlus aria-hidden />
+                  Add to project
                 </Button>
               ) : null}
             </div>
@@ -565,6 +704,18 @@ export function FullNetworkView() {
         onConfirm={handleScrapeVideoExpansion}
       />
 
+      <AddToProjectDialog
+        open={addToProjectOpen}
+        onOpenChange={setAddToProjectOpen}
+        nodeIds={
+          graphProjection === "video" && graphQuery.data
+            ? (graphQuery.data as NetworkGraphPayload).nodes.map((n) => n.video_id)
+            : []
+        }
+        runId={graphRunId ?? undefined}
+        onSaved={() => showToast("Filtered network saved to project", "success")}
+      />
+
       {toast && (
         <div className="fixed bottom-4 right-4 z-50 animate-slide-in">
           <Toast
@@ -609,5 +760,100 @@ function RunPicker({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+function NodeListPanel({
+  nodes,
+  isolatedOnly,
+  onScrape,
+}: {
+  nodes: GraphNode[];
+  isolatedOnly: boolean;
+  onScrape: (videoId: string) => void;
+}) {
+  const sorted = useMemo(() => {
+    const list = nodes.slice();
+    list.sort((a, b) => {
+      const deg = (b.in_degree + b.out_degree) - (a.in_degree + a.out_degree);
+      return deg !== 0 ? deg : (a.id).localeCompare(b.id);
+    });
+    return list;
+  }, [nodes]);
+
+  const [expanded, setExpanded] = useState(true);
+
+  if (sorted.length === 0) return null;
+
+  const disconnectedCount = sorted.filter(
+    (n) => n.in_degree === 0 && n.out_degree === 0,
+  ).length;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="flex items-center gap-1.5 text-sm font-medium outline-none hover:text-foreground/80"
+        >
+          <span aria-hidden>{expanded ? "▾" : "▸"}</span>
+          {isolatedOnly ? "Isolated (non-connected) videos" : "Node list"}
+          <Badge variant="outline">{sorted.length}</Badge>
+          {!isolatedOnly && disconnectedCount > 0 ? (
+            <Badge variant="secondary">{disconnectedCount} non-connected</Badge>
+          ) : null}
+        </button>
+        {isolatedOnly ? (
+          <Button variant="ghost" size="sm" onClick={() => onScrape(sorted[0].id)}>
+            Scrape first
+          </Button>
+        ) : null}
+      </div>
+      {expanded ? (
+        <div className="mt-2 max-h-64 overflow-y-auto rounded-md border">
+          <table className="w-full text-left text-xs">
+            <thead className="sticky top-0 bg-muted/80 backdrop-blur">
+              <tr>
+                <th className="px-2 py-1 font-medium">Video</th>
+                <th className="px-2 py-1 font-medium">Channel</th>
+                <th className="px-2 py-1 font-medium">Degree</th>
+                <th className="px-2 py-1 font-medium">Scraped</th>
+                <th className="px-2 py-1 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((node) => (
+                <tr key={node.id} className="border-t first:border-t-0">
+                  <td className="max-w-56 truncate px-2 py-1 font-mono" title={node.title ?? undefined}>
+                    {node.id}
+                  </td>
+                  <td className="max-w-40 truncate px-2 py-1">{node.channel ?? "—"}</td>
+                  <td className="px-2 py-1">
+                    {node.out_degree}→ {node.in_degree}←
+                  </td>
+                  <td className="px-2 py-1">
+                    {node.recommendations_scraped ? (
+                      <Badge variant="default">scraped</Badge>
+                    ) : (
+                      <Badge variant="outline">unscraped</Badge>
+                    )}
+                  </td>
+                  <td className="px-2 py-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onScrape(node.id)}
+                    >
+                      Scrape
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </div>
   );
 }

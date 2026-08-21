@@ -156,6 +156,7 @@ class Video(BaseModel):
     transcript_status: str | None = None
     transcript_lang: str | None = None
     first_observed_run_id: str
+    recommendations_scraped: bool = False
     raw_json: dict[str, Any] = Field(default_factory=dict)
 
 

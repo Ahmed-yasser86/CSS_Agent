@@ -47,7 +47,7 @@ export class ApiError extends Error {
   }
 }
 
-const API_BASE =
+export const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ?? "/api/v1/social-science";
 
 export interface CommentTreeNode {
@@ -244,6 +244,10 @@ export function getRunErrors(runId: string): Promise<CollectionError[]> {
   return request(`/runs/${runId}/errors`);
 }
 
+export function getRunSubRuns(runId: string): Promise<Paginated<CollectionRun>> {
+  return request(`/runs/${runId}/sub-runs`);
+}
+
 // ---------------------------------------------------------------------------
 // Channels
 // ---------------------------------------------------------------------------
@@ -349,10 +353,12 @@ export function getVideoRecommendations(videoId: string): Promise<Recommendation
 
 export function getVideoNetworkContext(
   videoId: string,
-  runId?: string,
+  runIds?: string[],
 ): Promise<VideoNetworkContext> {
   return request(
-    `/network/recommendations/${videoId}${toQuery({ run_id: runId })}`,
+    `/network/recommendations/${videoId}${toQuery({
+      run_ids: runIds && runIds.length ? runIds.join(",") : undefined,
+    })}`,
   );
 }
 

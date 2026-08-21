@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Briefcase, Ban, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import { useToast } from "@/components/ui/toast";
 import { RunStatusBadge } from "@/components/features/run-status-badge";
 import { LoadingState } from "@/components/features/state";
 import { formatNumber, formatDateTime } from "@/lib/format";
+import { JobDetailDialog } from "@/components/features/job-detail-dialog";
 import type { Job, JobStatus, CollectionStatus } from "@/lib/types";
 
 const ACTIVE_STATUSES: JobStatus[] = ["pending", "running"];
@@ -31,6 +32,7 @@ export function JobsTray() {
   const { data: jobs, isLoading, isError } = useJobs();
   const cancel = useCancelJob();
   const { toast } = useToast();
+  const [detailJobId, setDetailJobId] = useState<string | null>(null);
 
   const activeCount = useMemo(
     () => (jobs ?? []).filter((j) => ACTIVE_STATUSES.includes(j.status)).length,
@@ -120,6 +122,7 @@ export function JobsTray() {
                       job={job}
                       cancelling={cancel.isPending && cancel.variables === job.job_id}
                       onCancel={() => requestCancel(job)}
+                      onOpen={() => setDetailJobId(job.job_id)}
                     />
                   ))}
                 </JobGroup>
@@ -131,6 +134,7 @@ export function JobsTray() {
                       key={job.job_id}
                       job={job}
                       onCancel={() => requestCancel(job)}
+                      onOpen={() => setDetailJobId(job.job_id)}
                     />
                   ))}
                 </JobGroup>
@@ -143,6 +147,12 @@ export function JobsTray() {
           )}
         </div>
       </PopoverContent>
+      <JobDetailDialog
+        jobId={detailJobId}
+        onOpenChange={(open) => {
+          if (!open) setDetailJobId(null);
+        }}
+      />
     </Popover>
   );
 }
@@ -167,17 +177,26 @@ function JobGroup({
 function JobRow({
   job,
   onCancel,
+  onOpen,
   cancelling = false,
 }: {
   job: Job;
   onCancel: () => void;
+  onOpen: () => void;
   cancelling?: boolean;
 }) {
   const active = ACTIVE_STATUSES.includes(job.status);
   return (
     <div className="space-y-1 rounded-md border p-2.5">
       <div className="flex items-center justify-between gap-2">
-        <code className="truncate text-xs">{job.job_id}</code>
+        <button
+          type="button"
+          onClick={onOpen}
+          className="truncate font-mono text-xs underline-offset-2 outline-none hover:underline focus-visible:underline"
+          title="Open job details"
+        >
+          {job.job_id}
+        </button>
         {active ? (
           <Button
             variant="outline"

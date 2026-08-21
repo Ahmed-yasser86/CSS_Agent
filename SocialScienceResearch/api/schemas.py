@@ -38,6 +38,9 @@ __all__ = [
     "JobSubmitPayload",
     "LayerBootstrapRequest",
     "LayerScrapeRequest",
+    "NetworkExportToProjectRequest",
+    "NetworkMergeRequest",
+    "NetworkScopeRequest",
     "NetworkSummaryPayload",
     "OperatorInfoPayload",
     "Paginated",
@@ -247,6 +250,54 @@ class ExpansionScrapeAllRequest(_Base):
     filters: ScrapeFilters = Field(default_factory=ScrapeFilters)
 
 
+class NetworkScopeRequest(_Base):
+    """A video-network scope (``extra="forbid"``).
+
+    ``run_id`` pins the slice to one collection run, ``action_id`` to a
+    network-expansion action (its runs), ``video_ids`` to the ego edges
+    touching any listed video. An empty scope = the whole persisted network.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str | None = None
+    action_id: str | None = None
+    video_ids: list[str] = Field(default_factory=list)
+
+
+class NetworkExportToProjectRequest(_Base):
+    """Body for ``POST .../network/export-to-project`` (``extra="forbid"``).
+
+    Serializes a scoped video network (graphml/edgelist/gexf/csv/json) and
+    persists it as a :class:`ProjectItem` artifact under a Project. With no
+    scope the whole persisted recommendation network is exported.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    project_id: str
+    format: str = "graphml"
+    run_id: str | None = None
+    action_id: str | None = None
+    video_ids: list[str] = Field(default_factory=list)
+    name: str | None = None
+    description: str | None = None
+
+
+class NetworkMergeRequest(_Base):
+    """Body for ``POST .../network/merge`` (``extra="forbid"``).
+
+    Merges two scoped video networks and reports the overlap (shared
+    nodes/edges, Jaccard) plus combined SNA statistics on the union graph.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    scope_a: NetworkScopeRequest
+    scope_b: NetworkScopeRequest
+    top_n: int = Field(default=10, ge=1, le=500)
+
+
 class ChannelPayload(_Base):
     channel_id: str
     url: str
@@ -433,6 +484,8 @@ class VideoNetworkContextPayload(_Base):
     pagerank: float | None = None
     recommended_by: list[dict[str, Any]] = Field(default_factory=list)
     recommends: list[dict[str, Any]] = Field(default_factory=list)
+    graph_edges: list[dict[str, Any]] = Field(default_factory=list)
+    node_channels: dict[str, str] = Field(default_factory=dict)
 
 
 class DatasetSummaryPayload(_Base):
@@ -529,12 +582,18 @@ class SystemFoldersPayload(_Base):
 
 
 class ExportRequest(_Base):
-    """Request to export selected data to Excel."""
+    """Request to export selected data to Excel.
 
-    entity_type: str  # "video" | "comment" | "channel" | "run" | "sample" | "dataset"
+    Provide ``entity_type`` (+ optional ``ids``/``columns``) for a single-entity
+    sheet, or ``project_id`` to export *everything a project collected* as a
+    multi-sheet workbook (Videos, Comments, Channels, Recommendations, Runs).
+    """
+
+    entity_type: str | None = None  # "video" | "comment" | "channel" | "run" | "sample" | "dataset"
     ids: list[str] = Field(default_factory=list)
     columns: list[str] = Field(default_factory=list)
     filename: str | None = None
+    project_id: str | None = None
 
 
 class ExportResponse(_Base):

@@ -28,7 +28,7 @@ from SocialScienceResearch.config.settings import (
 )
 from SocialScienceResearch.domain.enums import DataAvailability, SamplingStrategy
 from SocialScienceResearch.domain.query import SamplingSpec
-from SocialScienceResearch.persistence.excel_repository import build_excel_repositories
+from SocialScienceResearch.persistence.factory import build_repositories
 from SocialScienceResearch.services import (
     AnalyticsService,
     CollectionService,
@@ -46,7 +46,7 @@ logger = get_logger(__name__)
 
 
 def _services(settings: SocialScienceSettings):
-    repos = build_excel_repositories(settings.repository)
+    repos = build_repositories(settings.repository)
     provider = YtDlpAcquisitionProvider(
         settings=settings.scraper, collection=settings.collection
     )

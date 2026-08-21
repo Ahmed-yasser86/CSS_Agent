@@ -195,11 +195,29 @@ def test_expand_video_creates_anchor_run_and_project(tmp_path) -> None:
     assert [a.layer_run_id for a in service.list_expansions()] == [layer.layer_run_id]
 
 
-def test_expand_video_unknown_video_raises(tmp_path) -> None:
-    service, repos = _build_service(tmp_path, _default_provider())
+def test_expand_video_source_not_persisted_is_extracted(tmp_path) -> None:
+    """A recommended target that exists only as a graph node (no Video row)
+    is extracted + persisted by the single-video expansion instead of failing
+    with 'Video not found' (the per-video scrape bug)."""
+    provider = ExpansionFakeProvider(
+        videos={
+            T1: _video_payload(T1, channel_id=CH1),
+            T2: _video_payload(T2, channel_id=CH2),
+        },
+        recs={T2: [_rec(T1, channel_id=CH1)]},
+    )
+    service, repos = _build_service(tmp_path, provider)
     _seed_channel_run(repos)
-    with pytest.raises(ValueError):
-        service.expand_video("missing_video", filters=ScrapeFilters())
+    # T2 is a recommendation target in the graph but never a Video row.
+    assert repos.videos.get_video(T2) is None
+
+    layer = service.expand_video(T2, filters=ScrapeFilters())
+
+    assert layer.status == CollectionStatus.SUCCESS
+    assert repos.videos.get_video(T2) is not None
+    edges = repos.recommendations.list_recommendation_edges()
+    assert {e.source_video_id for e in edges} == {T2}
+    assert {e.recommended_video_id for e in edges} == {T1}
 
 
 # ----------------------------------------------------------------------
@@ -493,3 +511,110 @@ def test_expansion_action_payload_is_serializable(tmp_path) -> None:
     assert payload.project_id is not None
     dump = payload.model_dump()
     assert dump["action_id"] == layer.layer_run_id
+
+
+def test_resolve_slice_includes_target_only_nodes(tmp_path) -> None:
+    """Scrape-all must expand target-only nodes, not just run sources.
+
+    A node may appear in a run's graph snapshot only as a recommended target
+    (connected from 2-3 sources) without ever having been scraped as a source.
+    Expanding only the sources would leave it permanently un-scraped.
+    """
+    provider = ExpansionFakeProvider(
+        videos={
+            T1: _video_payload(T1),
+            T2: _video_payload(T2),
+            T3: _video_payload(T3),
+        },
+        recs={
+            SEED_A: [_rec(T1)],
+            SEED_B: [_rec(T2)],
+            T1: [_rec(T3)],
+        },
+    )
+    service, repos = _build_service(tmp_path, provider)
+    run = _seed_channel_run(repos)
+
+    # Seed the slice run with edges seed_a->t1. T1 is a target in that edge but
+    # its OWN recommendations (T1->T3) were never scraped, and T3 appears
+    # nowhere as a source in this run.
+    results = service.collect_recommendations_for_videos(
+        [SEED_A, SEED_B], parent_run_id=run.run_id
+    )
+    slice_run_id = results[0].run_id
+    slice_edges = [
+        e
+        for e in repos.recommendations.list_recommendation_edges()
+        if e.collection_run_id == slice_run_id
+    ]
+    assert {(e.source_video_id, e.recommended_video_id) for e in slice_edges} == {
+        (SEED_A, T1)
+    }
+
+    # Resolving the slice from the run's snapshot includes the TARGET node T1,
+    # not just the source seed_a.
+    scope = service._resolve_slice([], slice_run_id)
+    assert set(scope) == {SEED_A, T1}
+
+    layer = service.expand_all_videos(
+        [],
+        filters=ScrapeFilters(dedupe=True),
+        parent_run_id=slice_run_id,
+    )
+    assert set(layer.frontier_video_ids) == {SEED_A, T1}
+    # T1's feed (T1->T3) was scraped during the expansion: the target-only node
+    # that was never a source in the snapshot still gets its recommendations.
+    t1_edges = [
+        e
+        for e in repos.recommendations.list_recommendation_edges(source_video_id=T1)
+    ]
+    assert any(e.recommended_video_id == T3 for e in t1_edges)
+
+
+def test_recommendations_scraped_flag_is_set(tmp_path) -> None:
+    """After a scrape, the source video is flagged as recommendations-scraped."""
+    provider = ExpansionFakeProvider(
+        videos={T1: _video_payload(T1)},
+        recs={SEED_A: [_rec(T1)]},
+    )
+    service, repos = _build_service(tmp_path, provider)
+    run = _seed_channel_run(repos)
+
+    assert repos.videos.get_video(SEED_A).recommendations_scraped is False
+
+    service.collect_recommendations_for_videos(
+        [SEED_A], parent_run_id=run.run_id
+    )
+
+    assert repos.videos.get_video(SEED_A).recommendations_scraped is True
+
+
+def test_dedupe_all_history_skips_edges_seen_in_any_run(tmp_path) -> None:
+    """dedupe_all_history skips edges observed in ANY earlier run."""
+    provider = ExpansionFakeProvider(
+        videos={T1: _video_payload(T1)},
+        recs={SEED_A: [_rec(T1)]},
+    )
+    service, repos = _build_service(tmp_path, provider)
+    run = _seed_channel_run(repos)
+
+    # First scrape persists seed_a->t1 under its own run.
+    results = service.collect_recommendations_for_videos(
+        [SEED_A], parent_run_id=run.run_id
+    )
+    assert len(repos.recommendations.list_recommendation_edges()) == 1
+
+    # Re-scrape with dedupe_all_history: the edge already exists somewhere, so
+    # it must NOT be re-persisted under a fresh run.
+    results2 = service.collect_recommendations_for_videos(
+        [SEED_A],
+        parent_run_id=run.run_id,
+        dedupe_all_history=True,
+    )
+    assert len(repos.recommendations.list_recommendation_edges()) == 1
+
+    # Without dedupe_all_history the same edge is re-observed (temporal slice).
+    service.collect_recommendations_for_videos(
+        [SEED_A], parent_run_id=run.run_id
+    )
+    assert len(repos.recommendations.list_recommendation_edges()) == 2

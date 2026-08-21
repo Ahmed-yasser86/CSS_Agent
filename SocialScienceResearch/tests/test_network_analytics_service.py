@@ -11,6 +11,8 @@ weakly-connected components.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -32,6 +34,7 @@ from SocialScienceResearch.domain.models import (
 from SocialScienceResearch.persistence.excel_repository import build_excel_repositories
 from SocialScienceResearch.services.network_analytics_service import (
     NetworkAnalyticsService,
+    NetworkScope,
 )
 from SocialScienceResearch.utils.idgen import utcnow
 
@@ -311,6 +314,175 @@ def test_export_unknown_format_raises_value_error(service) -> None:
         service.export_edges(format="dot")
 
 
+# ----------------------------------------------------------------------
+# Service: export_network (formats, scopes)
+# ----------------------------------------------------------------------
+def test_export_network_csv_labeled_rows(service) -> None:
+    _seed_videos(service._repos)
+    filename, content, media_type = service.export_network(format="csv")
+    assert filename == "recommendations.csv"
+    assert media_type == "text/csv"
+    rows = content.strip().splitlines()
+    assert rows[0].startswith(
+        "source_video_id,recommended_video_id,position,run_id"
+    )
+    assert len(rows) == 8  # header + 7 edges
+    assert "Title a" in content
+
+
+def test_export_network_json_payload(service) -> None:
+    _seed_videos(service._repos)
+    filename, content, media_type = service.export_network(format="json")
+    assert filename == "recommendations.json"
+    assert media_type == "application/json"
+    payload = json.loads(content)
+    assert payload["node_count"] == 6
+    assert payload["edge_count"] == 7
+    assert payload["scope"] == {"run_id": None, "run_ids": [], "video_ids": []}
+    assert len(payload["edges"]) == 7
+    assert payload["edges"][0]["source_title"] is not None
+
+
+def test_export_network_scoped_by_run_ids(service) -> None:
+    filename, content, _ = service.export_network(
+        format="edgelist", run_ids=["net_r2"]
+    )
+    assert filename == "recommendations.edgelist"
+    lines = [line for line in content.splitlines() if line]
+    assert len(lines) == 5
+    sources = {line.split()[0] for line in lines}
+    assert sources == {"a2", "b2", "c2", "d2"}
+
+
+def test_export_network_scoped_by_video_ego(service) -> None:
+    _, content, _ = service.export_network(
+        format="edgelist", video_ids=["a"]
+    )
+    lines = [line for line in content.splitlines() if line]
+    assert len(lines) == 2  # a->b and b->a both touch 'a'
+
+
+def test_export_network_unknown_format_raises(service) -> None:
+    with pytest.raises(ValueError, match="expected one of"):
+        service.export_network(format="dot")
+
+
+def test_export_network_xlsx_workbook(service) -> None:
+    """xlsx export returns real workbook bytes with the labeled columns."""
+    _seed_videos(service._repos)
+    filename, content, media_type = service.export_network(format="xlsx")
+    assert filename == "recommendations.xlsx"
+    assert media_type.endswith("spreadsheetml.sheet")
+    assert isinstance(content, bytes)
+    assert content[:2] == b"PK"  # zip magic: a valid OOXML container
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(BytesIO(content))
+    sheet = workbook.active
+    rows = list(sheet.iter_rows(values_only=True))
+    assert rows[0][0] == "source_video_id"
+    assert len(rows) == 8  # header + 7 edges
+    assert any("Title a" in str(cell) for row in rows for cell in row if cell)
+
+
+# ----------------------------------------------------------------------
+# Service: merge_networks
+# ----------------------------------------------------------------------
+def test_merge_identical_scopes_full_overlap(service) -> None:
+    scope = NetworkScope(run_id="net_r1")
+    result = service.merge_networks(scope, scope)
+    assert result.overlap.shared_node_count == 2
+    assert result.overlap.shared_edge_count == 2
+    assert result.overlap.union_node_count == 2
+    assert result.overlap.union_edge_count == 2
+    assert result.overlap.nodes_only_in_a == 0
+    assert result.overlap.edges_only_in_b == 0
+    assert result.overlap.jaccard_node_overlap == 1.0
+    assert result.overlap.jaccard_edge_overlap == 1.0
+    assert result.merged.node_count == 2
+    assert result.merged.edge_count == 2
+    assert result.merged.reciprocity == 1.0
+    assert result.node_count == 2
+    assert result.edge_count == 2
+
+
+def test_merge_disjoint_run_scopes(service) -> None:
+    result = service.merge_networks(
+        NetworkScope(run_id="net_r1"), NetworkScope(run_id="net_r2")
+    )
+    assert result.overlap.shared_node_count == 0
+    assert result.overlap.shared_edge_count == 0
+    assert result.overlap.union_node_count == 6
+    assert result.overlap.union_edge_count == 7
+    assert result.overlap.jaccard_node_overlap == 0.0
+    assert result.overlap.jaccard_edge_overlap == 0.0
+
+
+def test_merge_run_against_whole_network_partial_overlap(service) -> None:
+    result = service.merge_networks(NetworkScope(run_id="net_r1"), NetworkScope())
+    assert result.overlap.scope_a_node_count == 2
+    assert result.overlap.shared_node_count == 2
+    assert result.overlap.nodes_only_in_a == 0
+    assert result.overlap.nodes_only_in_b == 4
+    assert result.overlap.union_node_count == 6
+    assert result.overlap.union_edge_count == 7
+    assert result.overlap.shared_edge_count == 2
+    assert result.overlap.edges_only_in_a == 0
+    assert result.overlap.edges_only_in_b == 5
+    assert result.overlap.jaccard_node_overlap == pytest.approx(2 / 6)
+    assert result.overlap.jaccard_edge_overlap == pytest.approx(2 / 7)
+    assert result.merged.node_count == 6
+    assert result.merged.edge_count == 7
+    assert result.edge_count == 7
+
+
+def test_merge_video_ego_scopes_overlap(service) -> None:
+    result = service.merge_networks(
+        NetworkScope(video_ids=["a"]), NetworkScope(video_ids=["b"])
+    )
+    assert result.overlap.scope_a_node_count == 2
+    assert result.overlap.scope_b_node_count == 2
+    assert result.overlap.shared_node_count == 2
+    assert result.overlap.shared_edge_count == 2
+    assert result.overlap.union_edge_count == 2
+    assert result.overlap.jaccard_node_overlap == 1.0
+    assert result.overlap.jaccard_edge_overlap == 1.0
+
+
+def test_merge_empty_scopes_cover_whole_network(service) -> None:
+    result = service.merge_networks(NetworkScope(), NetworkScope())
+    assert result.overlap.union_edge_count == 7
+    assert result.overlap.jaccard_edge_overlap == 1.0
+    assert result.merged.edge_count == 7
+
+
+def test_merge_labeled_top_degree_nodes(service) -> None:
+    _seed_videos(service._repos)
+    result = service.merge_networks(NetworkScope(run_id="net_r1"), NetworkScope())
+    assert result.merged.top_degree_nodes
+    top = result.merged.top_degree_nodes[0]
+    assert top.video_id == "a2"
+    assert top.title == "Title a2"
+    assert top.channel_id == "UC2"
+    assert top.total_degree == 4
+    by_id = {n.video_id: n for n in result.merged.top_degree_nodes}
+    assert by_id["c2"].total_degree == 3
+    degrees = [n.total_degree for n in result.merged.top_degree_nodes]
+    assert degrees == sorted(degrees, reverse=True)
+
+
+def test_merge_union_edges_deduplicated(service) -> None:
+    """A shared edge is one union edge even when both scopes observe it."""
+    result = service.merge_networks(
+        NetworkScope(run_id="net_r1"), NetworkScope(run_id="net_r1")
+    )
+    assert result.edge_count == 2
+    pairs = {(e.source, e.target) for e in result.edges}
+    assert pairs == {("a", "b"), ("b", "a")}
+
+
 def test_channel_projection_lists_distinct_channels(service) -> None:
     projection = service.channel_projection()
     assert [f.channel_id for f in projection.channels] == ["UC1", "UC2", "UC3"]
@@ -426,6 +598,56 @@ def test_graph_layer_index_filter(service) -> None:
     assert graph.node_count == 2
 
 
+def test_graph_isolated_nodes_only(service) -> None:
+    """connected=isolated returns only videos with no edge in the slice."""
+    _seed_videos(service._repos)
+    repos = service._repos
+    # A video exists in the corpus but has no recommendation edges.
+    repos.videos.upsert_video(
+        Video(
+            video_id="lonely",
+            url="https://www.youtube.com/watch?v=lonely",
+            channel_id="UC1",
+            title="Lonely",
+            first_observed_run_id="net_r1",
+        )
+    )
+    graph = service.graph(connected="isolated")
+    assert {n.video_id for n in graph.nodes} == {"lonely"}
+    # The connected graph excludes the isolated node.
+    full = service.graph()
+    assert "lonely" not in {n.video_id for n in full.nodes}
+
+
+def test_graph_scraped_filter(service) -> None:
+    """scraped=scraped / unscraped filter nodes by scrape state."""
+    _seed_videos(service._repos)
+    repos = service._repos
+    repos.videos.mark_recommendations_scraped("a")
+    repos.videos.mark_recommendations_scraped("a2")
+
+    scraped_graph = service.graph(scraped="scraped")
+    assert {n.video_id for n in scraped_graph.nodes} == {"a", "a2"}
+    assert all(n.recommendations_scraped for n in scraped_graph.nodes)
+
+    unscraped_graph = service.graph(scraped="unscraped")
+    assert {n.video_id for n in unscraped_graph.nodes} == {"b", "b2", "c2", "d2"}
+    assert all(not n.recommendations_scraped for n in unscraped_graph.nodes)
+
+
+def test_graph_node_carries_recommendations_scraped_flag(service) -> None:
+    _seed_videos(service._repos)
+    repos = service._repos
+    graph = service.graph()
+    by_id = {n.video_id: n for n in graph.nodes}
+    assert all(by_id[v].recommendations_scraped is False for v in ("a", "b", "a2"))
+    repos.videos.mark_recommendations_scraped("a")
+    graph = service.graph()
+    by_id = {n.video_id: n for n in graph.nodes}
+    assert by_id["a"].recommendations_scraped is True
+    assert by_id["b"].recommendations_scraped is False
+
+
 def test_channel_graph_aggregates_weighted_pairs(service) -> None:
     _seed_videos(service._repos)
     projection = service.channel_graph()
@@ -476,6 +698,125 @@ def test_channel_graph_counts_unattributed_edges(service) -> None:
     assert projection.node_count == 3
 
 
+def test_graph_empty_network_returns_empty_payload(tmp_path) -> None:
+    """No edges at all -> an empty graph (nodes/edges empty, no crash)."""
+    repos = build_excel_repositories(
+        RepositorySettings(data_dir=str(tmp_path), dataset_name="net_empty")
+    )
+    empty = NetworkAnalyticsService(repos)
+    graph = empty.graph()
+    assert graph.node_count == 0
+    assert graph.edge_count == 0
+    assert graph.nodes == []
+    assert graph.edges == []
+    assert graph.runs == []
+    assert graph.channels == []
+
+
+def test_graph_self_loop_edge(service) -> None:
+    """A video that recommends itself yields one node with in+out degree."""
+    repos = service._repos
+    repos.recommendations.save_recommendation(
+        RecommendationObservation(
+            observation_id="r_obs_self",
+            collection_run_id="net_r1",
+            source_video_id="selfy",
+            recommended_video_id="selfy",
+            position=0,
+            status=RecommendationStatus.OBSERVED,
+        )
+    )
+    repos.videos.upsert_video(
+        Video(
+            video_id="selfy",
+            url="https://www.youtube.com/watch?v=selfy",
+            channel_id="UC1",
+            title="Self",
+            first_observed_run_id="net_r1",
+        )
+    )
+    graph = service.graph()
+    by_id = {n.video_id: n for n in graph.nodes}
+    assert "selfy" in by_id
+    assert by_id["selfy"].in_degree == 1
+    assert by_id["selfy"].out_degree == 1
+    assert graph.node_count >= 1
+
+
+def test_graph_parallel_edges_same_pair(service) -> None:
+    """Parallel edges between the same pair do not duplicate nodes."""
+    repos = service._repos
+    for i in range(3):
+        repos.recommendations.save_recommendation(
+            RecommendationObservation(
+                observation_id=f"r_par_{i}",
+                collection_run_id="net_r1",
+                source_video_id="pa",
+                recommended_video_id="pb",
+                position=i,
+                status=RecommendationStatus.OBSERVED,
+            )
+        )
+    repos.videos.upsert_video(
+        Video(
+            video_id="pa",
+            url="https://www.youtube.com/watch?v=pa",
+            channel_id="UC1",
+            title="Pa",
+            first_observed_run_id="net_r1",
+        )
+    )
+    repos.videos.upsert_video(
+        Video(
+            video_id="pb",
+            url="https://www.youtube.com/watch?v=pb",
+            channel_id="UC1",
+            title="Pb",
+            first_observed_run_id="net_r1",
+        )
+    )
+    graph = service.graph()
+    by_id = {n.video_id: n for n in graph.nodes}
+    assert by_id["pa"].out_degree == 3
+    assert by_id["pb"].in_degree == 3
+
+
+def test_graph_empty_results_when_filter_matches_nothing(service) -> None:
+    """Filters that match no edges/nodes yield an empty payload, not an error."""
+    _seed_videos(service._repos)
+    repos = service._repos
+
+    empty_run = service.graph(run_id="does-not-exist")
+    assert empty_run.node_count == 0
+    assert empty_run.edge_count == 0
+
+    empty_layer = service.graph(layer_index=99)
+    assert empty_layer.node_count == 0
+    assert empty_layer.edge_count == 0
+
+    empty_channel = service.graph(channel_id="UC-NOPE")
+    assert empty_channel.node_count == 0
+    assert empty_channel.edge_count == 0
+
+    empty_ego = service.graph(video_ids=["zzz-no-such-video"])
+    assert empty_ego.node_count == 0
+
+    empty_scraped = service.graph(scraped="scraped")
+    assert all(not n.recommendations_scraped for n in empty_scraped.nodes)
+    assert empty_scraped.node_count == 0
+
+    empty_isolated = service.graph(connected="isolated")
+    assert empty_isolated.node_count == 0
+
+
+def test_graph_degree_counts_are_consistent(service) -> None:
+    """Total out-degree across nodes equals total in-degree across nodes."""
+    _seed_videos(service._repos)
+    graph = service.graph()
+    assert sum(n.out_degree for n in graph.nodes) == sum(n.in_degree for n in graph.nodes)
+    assert sum(n.out_degree for n in graph.nodes) == graph.edge_count
+
+
 # ----------------------------------------------------------------------
 # Router endpoints (TestClient)
 # ----------------------------------------------------------------------
@@ -489,13 +830,37 @@ def test_endpoint_metrics(client) -> None:
     assert 0.0 <= body["density"] <= 1.0
 
 
-def test_endpoint_temporal(client) -> None:
-    resp = client.get(f"{PREFIX}/network/temporal", params={"runs": "net_r1,net_r2"})
+def test_endpoint_graph_advanced_filters(client) -> None:
+    """GET /network/graph accepts connected/scraped/layer_index params."""
+    resp = client.get(f"{PREFIX}/network/graph")
     assert resp.status_code == 200
-    body = resp.json()
-    assert [s["run_id"] for s in body["slices"]] == ["net_r1", "net_r2"]
-    assert body["slices"][0]["reciprocity"] == 1.0
-    assert body["growth"][0]["edge_growth"] == 3
+    assert resp.json()["node_count"] == 6
+
+    isolated = client.get(
+        f"{PREFIX}/network/graph", params={"connected": "isolated"}
+    )
+    assert isolated.status_code == 200
+
+    bad_connected = client.get(
+        f"{PREFIX}/network/graph", params={"connected": "bogus"}
+    )
+    assert bad_connected.status_code == 400
+
+    bad_scraped = client.get(
+        f"{PREFIX}/network/graph", params={"scraped": "bogus"}
+    )
+    assert bad_scraped.status_code == 400
+
+    layer = client.get(
+        f"{PREFIX}/network/graph", params={"layer_index": 0}
+    )
+    assert layer.status_code == 200
+
+
+def test_endpoint_network_export(client) -> None:
+    resp = client.get(f"{PREFIX}/network/export", params={"format": "graphml"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("application/xml")
 
 
 def test_endpoint_edges_pagination_envelope_with_metadata(client) -> None:

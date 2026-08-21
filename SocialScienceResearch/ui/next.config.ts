@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  // Next 16 dev serves scripts/module chunks with the crossorigin attribute,
+  // so their requests carry an Origin header. Requests whose Origin is not in
+  // this allowlist get 403 (hydration silently never runs). Allow the IPv4
+  // loopback alias 127.0.0.1 in addition to localhost so e2e runs and direct
+  // 127.0.0.1 browsing can hydrate. Production builds are unaffected.
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   // Proxy the SocialScienceResearch FastAPI backend during development and
   // deployment so the browser never needs to talk cross-origin.
   // Start the backend with: uvicorn SocialScienceResearch.api:create_app --factory

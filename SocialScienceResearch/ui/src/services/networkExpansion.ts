@@ -25,6 +25,9 @@ function invalidateExpansionQueries(queryClient: ReturnType<typeof useQueryClien
   void queryClient.invalidateQueries({ queryKey: ["network", "graph"] });
   void queryClient.invalidateQueries({ queryKey: ["network", "videos"] });
   void queryClient.invalidateQueries({ queryKey: ["network", "summary"] });
+  // The video-page Recommendations tab and per-video metadata also change once
+  // new recommendation edges land for a scraped video.
+  void queryClient.invalidateQueries({ queryKey: ["videos"] });
   void queryClient.invalidateQueries({ queryKey: ["runs"] });
   void queryClient.invalidateQueries({ queryKey: ["jobs"] });
   void queryClient.invalidateQueries({ queryKey: ["projects"] });

@@ -225,7 +225,14 @@ class CollectionSettings:
 
 @dataclass(frozen=True)
 class RepositorySettings:
-    """Settings for the persistence layer (Excel implementation)."""
+    """Settings for the persistence layer.
+
+    ``backend`` selects the repository implementation: ``"sql"`` (default,
+    PostgreSQL) or ``"excel"`` (legacy workbook + overflow sidecars). The SQL
+    backend reads its connection string from ``database_url`` and shares the
+    ``data_dir``/``transcripts_dir`` convention with Excel (transcript
+    artifacts and dataset raw sidecars stay on disk in both backends).
+    """
 
     data_dir: str = field(
         default_factory=lambda: _env_str("SOCIAL_DATA_DIR", DEFAULT_DATA_DIR)
@@ -242,6 +249,16 @@ class RepositorySettings:
         default_factory=lambda: _env_int("SOCIAL_FLUSH_EVERY", DEFAULT_FLUSH_EVERY)
     )
     """Number of write-through rows before the workbook auto-flushes to disk."""
+    backend: str = field(
+        default_factory=lambda: _env_str("SOCIAL_REPOSITORY_BACKEND", "sql")
+    )
+    """Persistence backend: ``"sql"`` (default, PostgreSQL) or ``"excel"``."""
+    database_url: str = field(
+        default_factory=lambda: _env_str(
+            "SOCIAL_DATABASE_URL", "postgresql://postgres:123456@localhost:5432/social_science"
+        )
+    )
+    """PostgreSQL connection string used when ``backend == "sql"``."""
 
     @property
     def workbook_path(self) -> Path:
@@ -294,6 +311,15 @@ class JobSettings:
         default_factory=lambda: _env_int("SOCIAL_JOB_MAX_WORKERS", DEFAULT_JOB_MAX_WORKERS)
     )
     """Number of concurrent background collection jobs."""
+
+    max_run_seconds: int = field(
+        default_factory=lambda: _env_int("SOCIAL_JOB_MAX_RUN_SECONDS", 3600)
+    )
+    """Hard cap on how long a job may run before it is force-failed.
+
+    Guards against yt-dlp/network calls that stall indefinitely: a job that
+    never returns from its worker would otherwise stay ``running`` forever.
+    """
 
 
 @dataclass(frozen=True)

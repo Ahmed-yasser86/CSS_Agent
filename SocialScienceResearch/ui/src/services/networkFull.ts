@@ -30,8 +30,21 @@ export const networkFullKeys = {
     channelId?: string,
     channelScope?: string,
     projection: GraphProjection = "video",
+    layerIndex?: number,
+    connected?: string,
+    scraped?: string,
   ) =>
-    ["network", "graph", runId ?? "all", channelId ?? "all", channelScope ?? "source", projection] as const,
+    [
+      "network",
+      "graph",
+      runId ?? "all",
+      channelId ?? "all",
+      channelScope ?? "source",
+      projection,
+      layerIndex ?? "all",
+      connected ?? "all",
+      scraped ?? "all",
+    ] as const,
 };
 
 export function getNetworkMetrics(
@@ -113,9 +126,20 @@ export function getNetworkGraph(
   channelId?: string,
   channelScope?: "source" | "target" | "either",
   projection: GraphProjection = "video",
+  layerIndex?: number,
+  connected?: "only" | "isolated",
+  scraped?: "scraped" | "unscraped",
 ): Promise<NetworkGraphPayload | ChannelGraphPayload> {
   return request(
-    `/network/graph${toQuery({ run_id: runId, channel_id: channelId, channel_scope: channelScope, projection })}`,
+    `/network/graph${toQuery({
+      run_id: runId,
+      channel_id: channelId,
+      channel_scope: channelScope,
+      projection,
+      layer_index: layerIndex,
+      connected,
+      scraped,
+    })}`,
   );
 }
 
@@ -125,10 +149,30 @@ export function useNetworkGraph(
   channelScope: "source" | "target" | "either" = "source",
   projection: GraphProjection = "video",
   options = {},
+  layerIndex?: number,
+  connected?: "only" | "isolated",
+  scraped?: "scraped" | "unscraped",
 ) {
   return useQuery({
-    queryKey: networkFullKeys.graph(runId, channelId, channelScope, projection),
-    queryFn: () => getNetworkGraph(runId, channelId, channelScope, projection),
+    queryKey: networkFullKeys.graph(
+      runId,
+      channelId,
+      channelScope,
+      projection,
+      layerIndex,
+      connected,
+      scraped,
+    ),
+    queryFn: () =>
+      getNetworkGraph(
+        runId,
+        channelId,
+        channelScope,
+        projection,
+        layerIndex,
+        connected,
+        scraped,
+      ),
     placeholderData: (previous) => previous,
     ...options,
   });

@@ -433,9 +433,13 @@ def _eval_condition(
         return False
 
     if op is Operator.TOP_PCT:
+        if cond.value is None:
+            raise ValueError("operator 'top_pct' requires a numeric value")
         threshold = StatisticsService.percentile(vals, cond.value)
         return threshold is not None and value >= threshold
     if op is Operator.BOTTOM_PCT:
+        if cond.value is None:
+            raise ValueError("operator 'bottom_pct' requires a numeric value")
         threshold = StatisticsService.percentile(vals, 100 - cond.value)
         return threshold is not None and value < threshold
     if op is Operator.MEDIAN_SPLIT:

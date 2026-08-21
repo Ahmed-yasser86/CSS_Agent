@@ -1884,7 +1884,7 @@
           "network"
         ],
         "summary": "Expansion Scrape Video",
-        "description": "Queue a one-hop expansion of a single video (job id).\n\nPoll ``GET /jobs/{job_id}``; on success the action anchor appears in\n``GET /network/expansion`` with its auto-created Project.",
+        "description": "Queue a one-hop expansion of a single video (job id).\n\nPoll ``GET /jobs/{job_id}``; on success the action anchor appears in\n``GET /network/expansion`` with its auto-created Project.\n\nThe video need not be a deep-enriched ``Video`` row yet - a recommended\ntarget that exists only as a graph node is extracted and persisted on the\nfly by the job, mirroring the scrape-all expansion.",
         "operationId": "expansion_scrape_video_api_v1_social_science_network_expansion_scrape_video_post",
         "requestBody": {
           "content": {
@@ -2605,7 +2605,7 @@
           "network"
         ],
         "summary": "Network Graph",
-        "description": "Enriched node/edge payload for the interactive graph UI.\n\nNodes carry composite labels (``[ID] + Channel Name + Video Title +\nthumbnails/metrics``) plus degree/kind/provenance; the response includes\nrun and channel facets so the filter bar never derives options from the\nrendered graph. ``projection=channel`` collapses the video network into\na channel-level graph (channels as nodes, weighted edges between them).",
+        "description": "Enriched node/edge payload for the interactive graph UI.\n\nNodes carry composite labels (``[ID] + Channel Name + Video Title +\nthumbnails/metrics``) plus degree/kind/provenance; the response includes\nrun and channel facets so the filter bar never derives options from the\nrendered graph. ``projection=channel`` collapses the video network into\na channel-level graph (channels as nodes, weighted edges between them).\n\nAdvanced selection:\n- ``layer_index`` limits the slice to one crawl layer.\n- ``connected=only`` keeps nodes that participate in at least one edge;\n  ``connected=isolated`` keeps only isolated nodes (they render detached).\n- ``scraped=scraped`` keeps only nodes whose recommendation feed has been\n  scraped; ``scraped=unscraped`` keeps only nodes never scraped (the\n  candidates for a next expansion).",
         "operationId": "network_graph_api_v1_social_science_network_graph_get",
         "parameters": [
           {
@@ -2665,6 +2665,61 @@
               "title": "Projection"
             },
             "description": "Graph projection: video | channel"
+          },
+          {
+            "name": "layer_index",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Limit the slice to a single crawl layer (None = all layers)",
+              "title": "Layer Index"
+            },
+            "description": "Limit the slice to a single crawl layer (None = all layers)"
+          },
+          {
+            "name": "connected",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Node filter: 'only' shows only connected nodes, 'isolated' shows only isolated nodes (None = all)",
+              "title": "Connected"
+            },
+            "description": "Node filter: 'only' shows only connected nodes, 'isolated' shows only isolated nodes (None = all)"
+          },
+          {
+            "name": "scraped",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Node filter by recommendation-scrape state: 'scraped' | 'unscraped' | None = all",
+              "title": "Scraped"
+            },
+            "description": "Node filter by recommendation-scrape state: 'scraped' | 'unscraped' | None = all"
           }
         ],
         "responses": {
@@ -2906,6 +2961,112 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/export-to-project": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Network Export To Project",
+        "description": "Persist a scoped video network export as a ProjectItem artifact.\n\nSerializes the network slice (``run_id`` / ``action_id`` / ``video_ids``,\nor the whole persisted network when no scope is given) via\n``NetworkAnalyticsService.export_network`` and stores the artifact file\nunder ``{data_dir}/network_exports/``, tracked by a new ProjectItem\n(``item_type=\"mixed\"``, naming mirrors the network-expansion auto-project\nconvention). Returns the created ProjectItem.",
+        "operationId": "network_export_to_project_api_v1_social_science_network_export_to_project_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkExportToProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/merge": {
+      "post": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Network Merge",
+        "description": "Merge two video-network scopes: overlap + combined SNA statistics.\n\nReports shared/exclusive node & edge counts with Jaccard coefficients\n(``None`` when the union is empty - never fabricated as 0) and the SNA\nstatistics of the union graph (density, reciprocity, degree distribution,\ncomponents, communities/modularity, top labeled degree nodes) plus the\nenriched union nodes/edges.",
+        "operationId": "network_merge_api_v1_social_science_network_merge_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NetworkMergeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergedNetworkResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/social-science/network/merge/options": {
+      "get": {
+        "tags": [
+          "network"
+        ],
+        "summary": "Network Merge Options",
+        "description": "Runs + expansion actions usable as merge scopes (UI picker).",
+        "operationId": "network_merge_options_api_v1_social_science_network_merge_options_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NetworkMergeOptions"
                 }
               }
             }
@@ -4392,6 +4553,42 @@
         }
       }
     },
+    "/api/v1/social-science/jobs/{job_id}/stream": {
+      "get": {
+        "tags": [
+          "jobs"
+        ],
+        "summary": "Stream Job",
+        "description": "Server-Sent Events stream of a job's live state.\n\nPush-based alternative to polling ``GET /jobs/{job_id}``: emits one\n``data:`` event per state/progress change (plus a keep-alive comment\nevery 15s) and closes once the job reaches a terminal state. The\nclient connects with ``EventSource`` and reconnects automatically.",
+        "operationId": "stream_job_api_v1_social_science_jobs__job_id__stream_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/social-science/runs": {
       "get": {
         "tags": [
@@ -4563,6 +4760,79 @@
         }
       }
     },
+    "/api/v1/social-science/runs/{run_id}/sub-runs": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "List Sub Runs",
+        "description": "List the runs registered as children of this run (lineage).\n\nA bulk/expansion scrape creates one ``RECOMMENDATION`` run per source\nvideo; each is registered with ``parent_run_id`` pointing at the run\nthat triggered it, so the trigger run's sub-runs are always visible.",
+        "operationId": "list_sub_runs_api_v1_social_science_runs__run_id__sub_runs_get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from the previous page",
+              "title": "Cursor"
+            },
+            "description": "Opaque cursor from the previous page"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Paginated_RunPayload_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/social-science/runs/{run_id}/errors": {
       "get": {
         "tags": [
@@ -4615,7 +4885,7 @@
           "runs"
         ],
         "summary": "Run Videos",
-        "description": "List videos collected (first discovered) in a run.",
+        "description": "List videos collected by a run.\n\nFor a recommendation run the collected videos are the videos its edges\nobserved (targets + sources, deduplicated) -- this matches the run's\n``entities_succeeded`` edge count, so \"scraped 10\" shows 10 videos.\nFor channel/video runs the videos are those first discovered in the\nrun (``first_observed_run_id``).",
         "operationId": "run_videos_api_v1_social_science_runs__run_id__videos_get",
         "parameters": [
           {
@@ -10248,6 +10518,11 @@
               }
             ],
             "title": "Community Id"
+          },
+          "recommendations_scraped": {
+            "type": "boolean",
+            "title": "Recommendations Scraped",
+            "default": false
           }
         },
         "additionalProperties": true,
@@ -10801,6 +11076,211 @@
         "title": "LayerScrapeRequest",
         "description": "Body for ``POST .../network/layer/scrape`` (``extra=\"forbid\"``).\n\nEither ``parent_layer_run_id`` (advance an existing crawl) or a seed\n``parent_run_id`` (start layer 1) is required. ``projection`` selects the\ngraph view; ``collect_comments`` toggles comment enrichment for new videos."
       },
+      "MergedDegreeNode": {
+        "properties": {
+          "video_id": {
+            "type": "string",
+            "title": "Video Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "channel_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Name"
+          },
+          "in_degree": {
+            "type": "integer",
+            "title": "In Degree",
+            "default": 0
+          },
+          "out_degree": {
+            "type": "integer",
+            "title": "Out Degree",
+            "default": 0
+          },
+          "total_degree": {
+            "type": "integer",
+            "title": "Total Degree",
+            "default": 0
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "video_id"
+        ],
+        "title": "MergedDegreeNode",
+        "description": "A top-degree node of a merged network with resolvable labels.\n\nFollows the module's label-hygiene rule: a bare video id is never shown\nwithout context, so titles/channel names are resolved from persisted\nrepositories when available (``None`` only when nothing was persisted)."
+      },
+      "MergedGraphStats": {
+        "properties": {
+          "node_count": {
+            "type": "integer",
+            "title": "Node Count",
+            "default": 0
+          },
+          "edge_count": {
+            "type": "integer",
+            "title": "Edge Count",
+            "default": 0
+          },
+          "density": {
+            "type": "number",
+            "title": "Density",
+            "default": 0.0
+          },
+          "is_directed": {
+            "type": "boolean",
+            "title": "Is Directed",
+            "default": true
+          },
+          "reciprocity": {
+            "type": "number",
+            "title": "Reciprocity",
+            "default": 0.0
+          },
+          "degree_distribution": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DegreeDistribution"
+            },
+            "type": "object",
+            "title": "Degree Distribution",
+            "default": {}
+          },
+          "avg_clustering": {
+            "type": "number",
+            "title": "Avg Clustering",
+            "default": 0.0
+          },
+          "global_clustering": {
+            "type": "number",
+            "title": "Global Clustering",
+            "default": 0.0
+          },
+          "weakly_connected_components": {
+            "type": "integer",
+            "title": "Weakly Connected Components",
+            "default": 0
+          },
+          "largest_component_size": {
+            "type": "integer",
+            "title": "Largest Component Size",
+            "default": 0
+          },
+          "largest_component_share": {
+            "type": "number",
+            "title": "Largest Component Share",
+            "default": 0.0
+          },
+          "community_count": {
+            "type": "integer",
+            "title": "Community Count",
+            "default": 0
+          },
+          "modularity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modularity"
+          },
+          "top_degree_nodes": {
+            "items": {
+              "$ref": "#/components/schemas/MergedDegreeNode"
+            },
+            "type": "array",
+            "title": "Top Degree Nodes",
+            "default": []
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "MergedGraphStats",
+        "description": "Combined SNA statistics over the union of two scopes.\n\nMirrors ``NetworkMetrics`` so the merged-graph report reads like any other\nnetwork slice, plus ``top_degree_nodes`` (labeled, deterministically\nordered by total degree then id)."
+      },
+      "MergedNetworkResult": {
+        "properties": {
+          "scope_a": {
+            "$ref": "#/components/schemas/NetworkScope"
+          },
+          "scope_b": {
+            "$ref": "#/components/schemas/NetworkScope"
+          },
+          "overlap": {
+            "$ref": "#/components/schemas/OverlapStats"
+          },
+          "merged": {
+            "$ref": "#/components/schemas/MergedGraphStats"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNode"
+            },
+            "type": "array",
+            "title": "Nodes",
+            "default": []
+          },
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/GraphEdge"
+            },
+            "type": "array",
+            "title": "Edges",
+            "default": []
+          },
+          "node_count": {
+            "type": "integer",
+            "title": "Node Count",
+            "default": 0
+          },
+          "edge_count": {
+            "type": "integer",
+            "title": "Edge Count",
+            "default": 0
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "scope_a",
+          "scope_b",
+          "overlap",
+          "merged"
+        ],
+        "title": "MergedNetworkResult",
+        "description": "Overlap report + merged SNA stats for two network scopes.\n\n``nodes``/``edges`` carry the enriched union graph (labels resolved, same\nshape as ``NetworkGraph``) so the UI can render the merged net, while\n``overlap`` answers \"how much do these two nets share?\"."
+      },
       "MetricDelta": {
         "properties": {
           "metric": {
@@ -10912,6 +11392,77 @@
         "title": "MetricStat",
         "description": "Mean/median of one metric over an entity set with provenance."
       },
+      "NetworkExportToProjectRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id"
+          },
+          "format": {
+            "type": "string",
+            "title": "Format",
+            "default": "graphml"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "action_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Id"
+          },
+          "video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Video Ids"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "project_id"
+        ],
+        "title": "NetworkExportToProjectRequest",
+        "description": "Body for ``POST .../network/export-to-project`` (``extra=\"forbid\"``).\n\nSerializes a scoped video network (graphml/edgelist/gexf/csv/json) and\npersists it as a :class:`ProjectItem` artifact under a Project. With no\nscope the whole persisted recommendation network is exported."
+      },
       "NetworkGraph": {
         "properties": {
           "nodes": {
@@ -10962,6 +11513,57 @@
         "type": "object",
         "title": "NetworkGraph",
         "description": "Full graph payload: enriched nodes + edges + run/channel facets.\n\nServed by ``GET /network/graph`` so the UI renders readable nodes\n(``[ID] + Channel Name + Video Title + metrics``) and populates the\nrun/channel filter dropdowns from real facets - never from the rendered\ngraph."
+      },
+      "NetworkMergeOptions": {
+        "properties": {
+          "runs": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Runs",
+            "default": []
+          },
+          "expansions": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Expansions",
+            "default": []
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "NetworkMergeOptions",
+        "description": "Picker payload for ``GET /network/merge/options``.\n\nLists the run and expansion-action scopes the UI can merge. Videos are\nintentionally omitted (could be huge); the video-ego scope is entered as\nfree-form ``video_ids``."
+      },
+      "NetworkMergeRequest": {
+        "properties": {
+          "scope_a": {
+            "$ref": "#/components/schemas/NetworkScopeRequest"
+          },
+          "scope_b": {
+            "$ref": "#/components/schemas/NetworkScopeRequest"
+          },
+          "top_n": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Top N",
+            "default": 10
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "scope_a",
+          "scope_b"
+        ],
+        "title": "NetworkMergeRequest",
+        "description": "Body for ``POST .../network/merge`` (``extra=\"forbid\"``).\n\nMerges two scoped video networks and reports the overlap (shared\nnodes/edges, Jaccard) plus combined SNA statistics on the union graph."
       },
       "NetworkMetrics": {
         "properties": {
@@ -11091,6 +11693,76 @@
         "type": "object",
         "title": "NetworkMetrics",
         "description": "Aggregate statistics for one recommendation-network slice."
+      },
+      "NetworkScope": {
+        "properties": {
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "run_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Run Ids"
+          },
+          "video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Video Ids"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "NetworkScope",
+        "description": "A video-network scope for export / merge operations.\n\n``run_id`` pins the slice to one collection run; ``run_ids`` pins it to a\nset of runs (a network-expansion action's runs); ``video_ids`` keeps only\nthe ego edges touching any of the listed videos. When every field is empty\nthe scope is the whole persisted recommendation network."
+      },
+      "NetworkScopeRequest": {
+        "properties": {
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          },
+          "action_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Id"
+          },
+          "video_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Video Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "NetworkScopeRequest",
+        "description": "A video-network scope (``extra=\"forbid\"``).\n\n``run_id`` pins the slice to one collection run, ``action_id`` to a\nnetwork-expansion action (its runs), ``video_ids`` to the ego edges\ntouching any listed video. An empty scope = the whole persisted network."
       },
       "NetworkScrapeChannelRequest": {
         "properties": {
@@ -11661,6 +12333,96 @@
           "entity_type"
         ],
         "title": "OverlapEntity"
+      },
+      "OverlapStats": {
+        "properties": {
+          "scope_a_node_count": {
+            "type": "integer",
+            "title": "Scope A Node Count",
+            "default": 0
+          },
+          "scope_b_node_count": {
+            "type": "integer",
+            "title": "Scope B Node Count",
+            "default": 0
+          },
+          "scope_a_edge_count": {
+            "type": "integer",
+            "title": "Scope A Edge Count",
+            "default": 0
+          },
+          "scope_b_edge_count": {
+            "type": "integer",
+            "title": "Scope B Edge Count",
+            "default": 0
+          },
+          "shared_node_count": {
+            "type": "integer",
+            "title": "Shared Node Count",
+            "default": 0
+          },
+          "shared_edge_count": {
+            "type": "integer",
+            "title": "Shared Edge Count",
+            "default": 0
+          },
+          "union_node_count": {
+            "type": "integer",
+            "title": "Union Node Count",
+            "default": 0
+          },
+          "union_edge_count": {
+            "type": "integer",
+            "title": "Union Edge Count",
+            "default": 0
+          },
+          "nodes_only_in_a": {
+            "type": "integer",
+            "title": "Nodes Only In A",
+            "default": 0
+          },
+          "nodes_only_in_b": {
+            "type": "integer",
+            "title": "Nodes Only In B",
+            "default": 0
+          },
+          "edges_only_in_a": {
+            "type": "integer",
+            "title": "Edges Only In A",
+            "default": 0
+          },
+          "edges_only_in_b": {
+            "type": "integer",
+            "title": "Edges Only In B",
+            "default": 0
+          },
+          "jaccard_node_overlap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jaccard Node Overlap"
+          },
+          "jaccard_edge_overlap": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Jaccard Edge Overlap"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "OverlapStats",
+        "description": "Shared/exclusive node & edge counts between two network scopes.\n\n``jaccard_*`` is ``None`` when the union is empty (no meaningful ratio),\nnever fabricated as 0. Edge identity is directed (``source->target``)."
       },
       "Paginated_ChannelHistoryPoint_": {
         "properties": {
@@ -16437,6 +17199,14 @@
             },
             "type": "array",
             "title": "Recommends"
+          },
+          "graph_edges": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Graph Edges"
           }
         },
         "additionalProperties": true,

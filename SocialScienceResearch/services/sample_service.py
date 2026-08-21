@@ -18,7 +18,6 @@ from SocialScienceResearch.domain.sample_models import (
     SampleCompareResult,
 )
 from SocialScienceResearch.persistence.base import Repositories
-from SocialScienceResearch.persistence.sample_repository import SampleRepository
 from SocialScienceResearch.utils.idgen import new_id
 
 _ALLOWED_ENTITY_TYPES = frozenset(
@@ -40,7 +39,7 @@ class SampleService:
     """Lifecycle and comparison of immutable, persisted research samples."""
 
     def __init__(self, repos: Repositories) -> None:
-        self._repo = SampleRepository(repos.store)
+        self._repo = repos.samples
 
     # ------------------------------------------------------------------
     # CRUD

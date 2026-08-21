@@ -243,6 +243,11 @@ def test_all_routes_declare_response_model(client) -> None:
         methods = getattr(route, "methods", None)
         if not path or not methods or not path.startswith(PREFIX):
             continue
+        # Streaming endpoints (SSE, downloads) deliberately return a raw
+        # StreamingResponse/FileResponse and are exempt from response_model.
+        response_class = getattr(route, "response_class", None)
+        if response_class is not None:
+            continue
         if getattr(route, "response_model", None) is None:
             missing.append((path, sorted(methods)))
     assert missing == [], f"routes without response_model: {missing}"

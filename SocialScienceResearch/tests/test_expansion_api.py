@@ -206,11 +206,14 @@ def test_expansion_scrape_all_with_video_ids(client) -> None:
 
 
 def test_expansion_errors(client) -> None:
-    # Unknown video -> 404.
+    # A video that is only a graph node (not yet a Video row) is queued and
+    # extracted on the fly instead of 404ing.
     resp = client.post(
         f"{PREFIX}/network/expansion/scrape-video", json={"video_id": "missing"}
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 200, resp.text
+    job = _wait_for_terminal(client, resp.json()["job_id"])
+    assert job["status"] == "succeeded"
 
     # Missing scope -> 400.
     resp = client.post(f"{PREFIX}/network/expansion/scrape-all", json={})

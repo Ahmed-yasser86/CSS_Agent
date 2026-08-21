@@ -19,6 +19,7 @@ import {
 import { Combobox, ComboboxOption } from "@/components/ui/combobox";
 import { useToast } from "@/components/ui/toast";
 import { useExportData } from "@/services/queries";
+import { exportData } from "@/services/api";
 import { formatNumber } from "@/lib/format";
 import type { ExportRequest } from "@/lib/types";
 
@@ -104,6 +105,67 @@ function getAvailableColumns(entityType: string): { value: string; label: string
   return ENTITY_TYPE_COLUMNS[entityType] ?? [];
 }
 
+export function ProjectExportButton({
+  projectId,
+  className,
+}: {
+  projectId: string;
+  className?: string;
+}) {
+  const { toast } = useToast();
+  const [isExporting, setIsExporting] = useState(false);
+
+  async function handleExport() {
+    setIsExporting(true);
+    try {
+      const blob = await exportData({ project_id: projectId });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `project_${projectId}_export.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({
+        title: "Export started",
+        description: "Your project's collected data is downloading as Excel.",
+      });
+    } catch (error) {
+      toast({
+        title: "Export failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className={className}
+      onClick={handleExport}
+      disabled={isExporting}
+    >
+      {isExporting ? (
+        <>
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+          Exporting…
+        </>
+      ) : (
+        <>
+          <Download className="size-4" aria-hidden />
+          Export project to Excel
+        </>
+      )}
+    </Button>
+  );
+}
+
 export function ExportTab() {
   const { toast } = useToast();
   const exportMutation = useExportData();
@@ -168,18 +230,13 @@ export function ExportTab() {
 
     const requestBody = {
       entity_type: entityType,
-      entity_ids: entityIds,
-      format: "excel" as const,
-      include_raw: false,
-      include_transcripts: false,
-      include_comments: false,
+      ids: entityIds,
       columns: selectedColumns,
+      filename: filename || undefined,
     };
 
     try {
-      const blob = await exportMutation.mutateAsync(
-        requestBody as unknown as ExportRequest,
-      );
+      const blob = await exportMutation.mutateAsync(requestBody);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

@@ -18,7 +18,6 @@ from SocialScienceResearch.domain.dataset_models import (
     UpdateProjectRequest,
 )
 from SocialScienceResearch.persistence.base import Repositories
-from SocialScienceResearch.persistence.project_repository import ProjectRepository
 from SocialScienceResearch.utils.idgen import utcnow
 
 _MUTABLE_FIELDS = (
@@ -37,7 +36,7 @@ class ProjectService:
     """CRUD + design-hashing for persisted research projects."""
 
     def __init__(self, repos: Repositories) -> None:
-        self._projects = ProjectRepository(repos.store)
+        self._projects = repos.projects
 
     # ------------------------------------------------------------------
     @staticmethod

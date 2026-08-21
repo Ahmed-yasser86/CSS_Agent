@@ -11,10 +11,11 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { RunVideosBrowser } from "@/components/features/run-videos-browser";
+import { RunSubRunsBrowser } from "@/components/features/run-sub-runs-browser";
 import { FoldersTab } from "@/components/features/folders-tab";
 import { ExportTab } from "@/components/features/export-tab";
 
-type TabId = "overview" | "videos" | "folders" | "export";
+type TabId = "overview" | "videos" | "sub-runs" | "folders" | "export";
 
 export function RunDetail({ runId }: { runId: string }) {
   const searchParams = useSearchParams();
@@ -78,6 +79,7 @@ export function RunDetail({ runId }: { runId: string }) {
         <TabsList className="mb-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="videos">Videos</TabsTrigger>
+          <TabsTrigger value="sub-runs">Sub-runs</TabsTrigger>
           <TabsTrigger value="folders">Folders</TabsTrigger>
           <TabsTrigger value="export">Export</TabsTrigger>
         </TabsList>
@@ -159,6 +161,10 @@ export function RunDetail({ runId }: { runId: string }) {
 
         <TabsContent value="videos" className="mt-4">
           <RunVideosBrowser runId={runId} />
+        </TabsContent>
+
+        <TabsContent value="sub-runs" className="mt-4">
+          <RunSubRunsBrowser runId={runId} />
         </TabsContent>
 
         <TabsContent value="folders" className="mt-4">

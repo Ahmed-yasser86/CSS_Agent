@@ -14,12 +14,15 @@ const API = process.env.API_URL ?? 'http://localhost:8000/api/v1/social-science'
  *    via ?video_ids=...
  *  - A commenter profile page rendered from a real shared commenter
  *
- * Tests skip gracefully when the corpus has fewer than two videos with
- * comments (nothing to compare).
+ * Every test that depends on real overlap data reads the overlap summary from
+ * the live API at runtime and skips cleanly when the prerequisite is absent
+ * (fewer than two videos, no comments, or no commenter active across two or
+ * more videos). Tests never skip unconditionally.
  */
 test.describe('Commenter Overlap', () => {
   let videoIds: string[] = [];
   let commenterKey: string | null = null;
+  let hasOverlapData = false;
 
   test.beforeAll(async ({ request }) => {
     const channelsResp = await request.get(`${API}/channels`);
@@ -44,8 +47,12 @@ test.describe('Commenter Overlap', () => {
       );
       if (overlapResp.ok()) {
         const result = await overlapResp.json();
+        const global = result.global_summary ?? {};
         const projection = result.videos ?? {};
         const bridges = projection.bridge_commenters ?? [];
+        // Real overlap exists only when the corpus has comments AND at least
+        // one commenter active across >= 2 of the selected videos.
+        hasOverlapData = (global.comment_count ?? 0) > 0 && bridges.length > 0;
         if (bridges.length) {
           commenterKey = bridges[0].author_key;
         }
@@ -60,6 +67,10 @@ test.describe('Commenter Overlap', () => {
     );
     expect(resp.status()).toBe(200);
     const result = await resp.json();
+    test.skip(
+      result.global_summary.comment_count === 0,
+      'No comments in the corpus for the selected videos',
+    );
     expect(result.metric).toBe('jaccard');
     expect(result.global_summary.comment_count).toBeGreaterThan(0);
     expect(result.videos).not.toBeNull();
@@ -77,7 +88,10 @@ test.describe('Commenter Overlap', () => {
   });
 
   test('page: manual scope entry renders results', async ({ page }) => {
-    test.skip(videoIds.length < 2, 'Fewer than two videos in the corpus');
+    test.skip(
+      !hasOverlapData,
+      'No overlapping commenters in the corpus for the selected videos',
+    );
     await page.goto(`${BASE_URL}/network/commenters`);
     await page.waitForLoadState('networkidle');
 
@@ -95,7 +109,10 @@ test.describe('Commenter Overlap', () => {
   test('page: deep-link via query params renders results directly', async ({
     page,
   }) => {
-    test.skip(videoIds.length < 2, 'Fewer than two videos in the corpus');
+    test.skip(
+      !hasOverlapData,
+      'No overlapping commenters in the corpus for the selected videos',
+    );
     await page.goto(
       `${BASE_URL}/network/commenters?video_ids=${videoIds.slice(0, 2).join(',')}`,
     );

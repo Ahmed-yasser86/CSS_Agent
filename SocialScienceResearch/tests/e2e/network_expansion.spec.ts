@@ -67,10 +67,17 @@ test.describe('Network Expansion', () => {
       page.getByRole('heading', { name: 'Scrape all recommendations' }),
     ).toBeVisible({ timeout: 10000 });
 
-    // The dialog exposes filter controls and a submit action.
-    await expect(page.getByText('Projection')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Start scrape' })).toBeVisible();
-    await page.getByRole('button', { name: 'Cancel' }).click();
+    // The dialog exposes filter controls and a submit action. Scope to the
+    // dialog: the Graph tab's own projection selector also renders a
+    // "Projection" label, so getByText('Projection') alone would be ambiguous.
+    const dialog = page.getByRole('dialog', {
+      name: 'Scrape all recommendations',
+    });
+    await expect(dialog.getByText('Projection')).toBeVisible();
+    await expect(
+      dialog.getByRole('button', { name: 'Start scrape' }),
+    ).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
   });
 
   test('Scrape-all job can be queued when a slice run exists', async ({

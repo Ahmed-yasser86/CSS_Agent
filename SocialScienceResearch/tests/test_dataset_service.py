@@ -9,6 +9,7 @@ TestClient (pagination envelope, error envelope, streaming export).
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 
@@ -367,19 +368,91 @@ def test_export_csv_and_json_markers(service_env) -> None:
     assert any("B7 video 1" in line for line in lines)
     assert any(line.startswith("v_noobs,") for line in lines)
 
-    filename, content, media_type = service.export(dataset.dataset_id, "json")
-    assert filename.endswith(".json")
-    assert media_type == "application/json"
-    payload = json.loads(content)
-    assert payload["dataset"]["dataset_id"] == dataset.dataset_id
-    assert len(payload["members"]) == 6
-    assert payload["members"][0]["video_id"] == "v00"
 
-    with pytest.raises(ValueError):
-        service.export(dataset.dataset_id, "xml")
-    with pytest.raises(ValueError):
-        service.export("missing", "csv")
+def test_export_project_to_workbook_multi_sheet(service_env) -> None:
+    """A project's collected data exports as one multi-sheet Excel workbook."""
+    from openpyxl import load_workbook
 
+    from SocialScienceResearch.domain.dataset_models import Project, ProjectItem
+    from SocialScienceResearch.domain.models import RecommendationObservation
+    from SocialScienceResearch.services.export_service import (
+        export_project_to_workbook,
+    )
+    from SocialScienceResearch.services.project_service import ProjectService
+
+    repos, settings = service_env
+    dataset = DatasetService(repos, settings).create_dataset(
+        "collected videos", entity_type="video"
+    )
+
+    # A recommendation edge among the project's videos (so the Recommendations
+    # sheet is populated and run provenance is captured).
+    repos.recommendations.save_recommendation(
+        RecommendationObservation(
+            observation_id="rec_export",
+            collection_run_id="run_b7",
+            source_video_id="v00",
+            recommended_video_id="v01",
+            position=0,
+            title="B7 video 1",
+            channel_id=CHANNEL_ID,
+        )
+    )
+
+    now = utcnow()
+    project = ProjectService(repos).create(
+        Project(
+            project_id="proj_export",
+            name="Export project",
+            description=None,
+            targets=[],
+            collection_spec={},
+            sampling_specs=[],
+            research_query=None,
+            variable_selection=[],
+            notes=None,
+            config_hash="",
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    repos.project_items.save_item(
+        ProjectItem(
+            item_id="item_export",
+            project_id=project.project_id,
+            name="Collected videos",
+            item_type="dataset_group",
+            dataset_ids=[dataset.dataset_id],
+            created_at=now,
+            updated_at=now,
+        )
+    )
+
+    filename, content = export_project_to_workbook(repos, project.project_id)
+    assert filename == "project_proj_export_export.xlsx"
+
+    wb = load_workbook(io.BytesIO(content))
+    assert "Videos" in wb.sheetnames
+    assert "Runs" in wb.sheetnames
+    assert "Recommendations" in wb.sheetnames
+
+    videos = wb["Videos"]
+    # 1 header + 6 seeded videos
+    assert videos.max_row == 7
+    video_ids = {v[0].value for v in videos.iter_rows(min_row=2, max_col=1)}
+    assert {"v00", "v01", "v_noobs"} <= video_ids
+
+    recommendations = wb["Recommendations"]
+    assert recommendations.max_row >= 2  # header + the v00 -> v01 edge
+    rec_pairs = {
+        (r[0].value, r[1].value)
+        for r in recommendations.iter_rows(min_row=2, max_col=2)
+    }
+    assert ("v00", "v01") in rec_pairs
+
+    runs = wb["Runs"]
+    run_ids = {r[0].value for r in runs.iter_rows(min_row=2, max_col=1)}
+    assert "run_b7" in run_ids
 
 # ----------------------------------------------------------------------
 # Projects

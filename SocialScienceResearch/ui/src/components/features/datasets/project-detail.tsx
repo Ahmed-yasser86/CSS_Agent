@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState, ErrorState, LoadingState } from "@/components/features/state";
 import { ProjectItemBuilder } from "@/components/features/datasets/project-item-builder";
+import { ProjectExportButton } from "@/components/features/export-tab";
 import { useProject, useProjectItems, useDeleteProjectItem } from "@/services/queries";
 import { useToast } from "@/components/ui/toast";
 import { formatDateTime } from "@/lib/format";
@@ -67,6 +68,13 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
           <p className="text-sm text-muted-foreground">{project.description}</p>
         ) : null}
       </header>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <ProjectExportButton projectId={projectId} />
+        <Button variant="outline" size="sm" onClick={() => router.push("/network/full")}>
+          Open Network Lab
+        </Button>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field

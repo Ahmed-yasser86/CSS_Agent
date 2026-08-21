@@ -41,8 +41,6 @@ from SocialScienceResearch.domain.query import (
     evaluate_query,
 )
 from SocialScienceResearch.persistence.base import Repositories
-from SocialScienceResearch.persistence.dataset_repository import DatasetRepository
-from SocialScienceResearch.persistence.project_repository import ProjectRepository
 from SocialScienceResearch.services.quality_service import QualityService
 from SocialScienceResearch.services.query_service import QueryService
 from SocialScienceResearch.utils.idgen import new_id, utcnow
@@ -67,8 +65,8 @@ class DatasetService:
     ) -> None:
         self._repos = repos
         self._settings = settings or SocialScienceSettings()
-        self._datasets = DatasetRepository(repos.store)
-        self._projects = ProjectRepository(repos.store)
+        self._datasets = repos.datasets
+        self._projects = repos.projects
         self._quality = QualityService(repos)
         self._query = QueryService(repos, settings)
 

@@ -454,19 +454,32 @@ function ValueInputs({
           </Badge>
         </div>
       );
-    case "between":
+    case "between": {
+      // Backend contract: values=[low, high]. Store BOTH bounds in `values`
+      // (the previous code split them across `value` and `values[0]`, which the
+      // server ignored -> every `between` query 400'd).
+      const setBound = (idx: 0 | 1, raw: number | string | undefined) => {
+        const next = [...(condition.values ?? [])] as Array<
+          number | string | undefined
+        >;
+        next[idx] = raw;
+        const cleaned = next.filter(
+          (x) => x !== undefined,
+        ) as Array<number | string>;
+        patch({ value: undefined, values: cleaned.length ? cleaned : null });
+      };
       return isNumeric ? (
         <>
           {field("From", (
             <NumberInput
-              value={condition.value as number | undefined}
-              onChange={(v) => patch({ value: v })}
+              value={condition.values?.[0] as number | undefined}
+              onChange={(v) => setBound(0, v)}
             />
           ))}
           {field("To", (
             <NumberInput
-              value={condition.values?.[0] as number | undefined}
-              onChange={(v) => patch({ values: v === undefined ? null : [v] })}
+              value={condition.values?.[1] as number | undefined}
+              onChange={(v) => setBound(1, v)}
             />
           ))}
         </>
@@ -474,20 +487,19 @@ function ValueInputs({
         <>
           {field("From", (
             <Input
-              value={String(condition.value ?? "")}
-              onChange={(e) => patch({ value: e.target.value || null })}
+              value={String(condition.values?.[0] ?? "")}
+              onChange={(e) => setBound(0, e.target.value || undefined)}
             />
           ))}
           {field("To", (
             <Input
-              value={String(condition.values?.[0] ?? "")}
-              onChange={(e) =>
-                patch({ values: e.target.value ? [e.target.value] : null })
-              }
+              value={String(condition.values?.[1] ?? "")}
+              onChange={(e) => setBound(1, e.target.value || undefined)}
             />
           ))}
         </>
       );
+    }
     case "top_pct":
     case "bottom_pct":
     case "percentile_rank":

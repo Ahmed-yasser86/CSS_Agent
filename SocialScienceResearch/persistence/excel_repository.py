@@ -46,6 +46,7 @@ from .dataset_repository import DatasetRepository
 from .layer_repository import LayerRunRepository
 from .excel_workbook import WorkbookStore
 from .project_item_repository import ProjectItemRepository
+from .project_repository import ProjectRepository
 from .sample_repository import SampleRepository
 from .serialization import headers_for, model_to_row, row_to_model
 
@@ -194,6 +195,16 @@ class ExcelVideoRepository(_ExcelEntityRepository, VideoRepository):
         videos = self._list()  # type: ignore[return-value]
         return [v for v in videos if v.first_observed_run_id == run_id]
 
+    def mark_recommendations_scraped(self, video_id: str) -> None:
+        video = self.get_video(video_id)
+        if video is None:
+            return
+        video.recommendations_scraped = True
+        self.upsert_video(video)
+
+    def delete_video(self, video_id: str) -> None:
+        self._store.delete_row(self._SHEET, self._KEY, video_id)
+
     def save_video_observation(self, observation: VideoObservation) -> None:
         self._save_observation(observation)
 
@@ -310,6 +321,13 @@ class ExcelCollectionRunRepository(_ExcelEntityRepository, CollectionRunReposito
             runs = [r for r in runs if r.run_type == run_type]
         return sorted(runs, key=lambda r: r.started_at)
 
+    def list_sub_runs(self, parent_run_id: str) -> list[CollectionRun]:
+        return [
+            r
+            for r in self._list()  # type: ignore[return-value]
+            if r.parent_run_id == parent_run_id
+        ]
+
     def record_error(self, error: CollectionError) -> None:
         row = model_to_row(error)
         self._store.upsert_row(
@@ -363,6 +381,8 @@ class ExcelRecommendationRepository(_ExcelEntityRepository, RecommendationReposi
         self,
         source_video_id: str | None = None,
         run_id: str | None = None,
+        run_ids: list[str] | None = None,
+        exclude_run_ids: list[str] | None = None,
     ) -> list[RecommendationObservation]:
         rows = self._store.read_rows(self._SHEET)
         edges = [row_to_model(RecommendationObservation, r) for r in rows]
@@ -370,6 +390,12 @@ class ExcelRecommendationRepository(_ExcelEntityRepository, RecommendationReposi
             edges = [e for e in edges if e.source_video_id == source_video_id]
         if run_id is not None:
             edges = [e for e in edges if e.collection_run_id == run_id]
+        if run_ids is not None:
+            allowed = set(run_ids)
+            edges = [e for e in edges if e.collection_run_id in allowed]
+        if exclude_run_ids is not None:
+            excluded = set(exclude_run_ids)
+            edges = [e for e in edges if e.collection_run_id not in excluded]
         return edges
 
     def list_source_video_ids(self) -> list[str]:
@@ -487,6 +513,7 @@ class ExcelRepositories(Repositories):
     store: WorkbookStore
     datasets: DatasetRepository
     samples: SampleRepository
+    projects: ProjectRepository
     project_items: ProjectItemRepository
     layers: LayerRunRepository
 
@@ -514,6 +541,7 @@ def build_excel_repositories(
     authors = ExcelAuthorRepository(store)
     datasets = DatasetRepository(store)
     samples = SampleRepository(store)
+    projects = ProjectRepository(store)
     project_items = ExcelProjectItemRepository(store)
     layers = LayerRunRepository(store)
     # Ensure observation/error sheets exist up-front for a stable file layout.
@@ -535,6 +563,7 @@ def build_excel_repositories(
         authors=authors,
         datasets=datasets,
         samples=samples,
+        projects=projects,
         project_items=project_items,
         layers=layers,
         store=store,

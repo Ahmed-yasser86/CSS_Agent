@@ -5,9 +5,17 @@ All fixtures here are local and deterministic - no live YouTube requests.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 
 import pytest
+
+# Legacy service/API tests exercise the Excel backend through settings objects
+# that don't pin a backend explicitly. The production default is now "sql",
+# so lock this suite to "excel" for the tests that build settings without an
+# explicit backend. SQL-backend tests (test_sql_backend.py) pass backend="sql"
+# explicitly and are unaffected.
+os.environ.setdefault("SOCIAL_REPOSITORY_BACKEND", "excel")
 
 from SocialScienceResearch.domain.enums import RunType
 from SocialScienceResearch.domain.models import (

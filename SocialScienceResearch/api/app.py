@@ -18,6 +18,8 @@ API hardening (B2)
 
 from __future__ import annotations
 
+import asyncio
+import json
 from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
@@ -41,7 +43,7 @@ from SocialScienceResearch.domain.query import (
     evaluate_query,
     preview_query,
 )
-from SocialScienceResearch.persistence.excel_repository import build_excel_repositories
+from SocialScienceResearch.persistence.factory import build_repositories
 from SocialScienceResearch.services import (
     AnalyticsService,
     CoverageReport,
@@ -139,7 +141,7 @@ class NetworkScrapeChannelRequest(BaseModel):
 def _services(
     settings: SocialScienceSettings, *, provider=None
 ) -> dict[str, Any]:
-    repos = build_excel_repositories(settings.repository)
+    repos = build_repositories(settings.repository)
     if provider is None:
         from SocialScienceResearch.acquisition import YtDlpAcquisitionProvider
 
@@ -158,7 +160,10 @@ def _services(
         "sampling": SamplingService(repos, settings.sampling.default_seed),
         "network": RecommendationGraphService(repos),
         "quality": QualityService(repos),
-        "jobs": JobManager(max_workers=settings.jobs.max_workers),
+        "jobs": JobManager(
+                max_workers=settings.jobs.max_workers,
+                max_run_seconds=settings.jobs.max_run_seconds,
+            ),
         "layer_scrape": LayerScrapeService(provider, repos, settings=settings),
     }
 
@@ -451,6 +456,7 @@ def create_app(
                 sources,
                 parent_run_id=run.run_id,
                 dedupe_run_ids=[run.run_id] if body.dedupe else None,
+                dedupe_all_history=body.dedupe,
                 reporter=reporter,
             )
 
@@ -476,6 +482,7 @@ def create_app(
                 parent_run_id=body.trigger_run_id,
                 channel_id=body.channel_id,
                 dedupe_run_ids=[body.trigger_run_id] if (body.dedupe and body.trigger_run_id) else None,
+                dedupe_all_history=body.dedupe,
                 reporter=reporter,
             )
 
@@ -533,6 +540,56 @@ def create_app(
             return {"error": job.error}
         return _collect_payload_many(job.result)
 
+    @app.get(
+        f"{prefix}/jobs/{{job_id}}/stream",
+        tags=["jobs"],
+        response_class=StreamingResponse,
+    )
+    async def stream_job(job_id: str):
+        """Server-Sent Events stream of a job's live state.
+
+        Push-based alternative to polling ``GET /jobs/{job_id}``: emits one
+        ``data:`` event per state/progress change (plus a keep-alive comment
+        every 15s) and closes once the job reaches a terminal state. The
+        client connects with ``EventSource`` and reconnects automatically.
+        """
+        manager = services["jobs"]
+        if manager.get(job_id) is None:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+
+        loop = asyncio.get_running_loop()
+        queue = manager.subscribe(job_id, loop)
+
+        async def event_stream():
+            try:
+                terminal = {"succeeded", "failed", "cancelled"}
+                while True:
+                    try:
+                        snapshot = await asyncio.wait_for(
+                            queue.get(), timeout=15.0
+                        )
+                    except asyncio.TimeoutError:
+                        yield ": keep-alive\n\n"
+                        continue
+                    payload = JobPayload.model_validate(snapshot).model_dump(
+                        mode="json"
+                    )
+                    yield f"data: {json.dumps(payload)}\n\n"
+                    if snapshot["status"] in terminal:
+                        return
+            finally:
+                manager.unsubscribe(job_id, queue)
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     # ------------------------------------------------------------------
     # Runs (provenance)
     # ------------------------------------------------------------------
@@ -551,6 +608,28 @@ def create_app(
         if run is None:
             raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
         return _run_payload(run)
+
+    @app.get(
+        f"{prefix}/runs/{{run_id}}/sub-runs",
+        tags=["runs"],
+        response_model=Paginated[RunPayload],
+    )
+    def list_sub_runs(
+        run_id: str,
+        cursor: str | None = Query(None, description="Opaque cursor from the previous page"),
+        page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=500),
+    ):
+        """List the runs registered as children of this run (lineage).
+
+        A bulk/expansion scrape creates one ``RECOMMENDATION`` run per source
+        video; each is registered with ``parent_run_id`` pointing at the run
+        that triggered it, so the trigger run's sub-runs are always visible.
+        """
+        run = repos.runs.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        sub_runs = repos.runs.list_sub_runs(run_id)
+        return _paginate(sub_runs, cursor=cursor, page_size=page_size, key=_run_key)
 
     @app.patch(f"{prefix}/runs/{{run_id}}", tags=["runs"], response_model=RunPayload)
     def update_run(run_id: str, body: UpdateRunRequest):
@@ -580,11 +659,31 @@ def create_app(
         cursor: str | None = Query(None, description="Opaque cursor from the previous page"),
         page_size: int = Query(DEFAULT_PAGE_SIZE, ge=1, le=500),
     ):
-        """List videos collected (first discovered) in a run."""
+        """List videos collected by a run.
+
+        For a recommendation run the collected videos are the videos its edges
+        observed (targets + sources, deduplicated) -- this matches the run's
+        ``entities_succeeded`` edge count, so "scraped 10" shows 10 videos.
+        For channel/video runs the videos are those first discovered in the
+        run (``first_observed_run_id``).
+        """
         run = repos.runs.get_run(run_id)
         if run is None:
             raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
-        videos = repos.videos.list_videos_by_run(run_id)
+        if run.run_type == RunType.RECOMMENDATION:
+            video_ids: set[str] = set()
+            for edge in repos.recommendations.list_recommendation_edges(
+                run_id=run_id
+            ):
+                video_ids.add(edge.source_video_id)
+                video_ids.add(edge.recommended_video_id)
+            videos = []
+            for video_id in video_ids:
+                video = repos.videos.get_video(video_id)
+                if video is not None:
+                    videos.append(video)
+        else:
+            videos = repos.videos.list_videos_by_run(run_id)
         paginated = _paginate(videos, cursor=cursor, page_size=page_size, key=_video_key)
         return RunVideosPayload(
             run_id=run_id,
@@ -1048,12 +1147,29 @@ def create_app(
     def export_data(body: ExportRequest):
         """Export selected data to Excel file.
 
-        Accepts entity_type (video|comment|channel|run|sample|dataset), optional ids[],
-        optional columns[], and optional filename. Returns an Excel file download.
+        Two modes:
+        - ``project_id`` set: export *everything the project collected* as a
+          multi-sheet workbook (Videos, Comments, Channels, Recommendations, Runs).
+        - otherwise: export a single entity type (optionally filtered by ``ids``/
+          ``columns``) to one sheet.
         """
         from openpyxl import Workbook
         from openpyxl.styles import Font
         from io import BytesIO
+
+        if body.project_id:
+            from SocialScienceResearch.services.export_service import (
+                export_project_to_workbook,
+            )
+
+            filename, content = export_project_to_workbook(repos, body.project_id)
+            return StreamingResponse(
+                BytesIO(content),
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={
+                    "Content-Disposition": f"attachment; filename={filename}"
+                },
+            )
 
         # Validate entity_type
         valid_types = {"video", "comment", "channel", "run", "sample", "dataset"}
@@ -1200,8 +1316,17 @@ def create_app(
         tags=["network"],
         response_model=VideoNetworkContextPayload,
     )
-    def network_video_context(video_id: str, run_id: str | None = None):
-        return services["network"].video_context(video_id, run_id=run_id).__dict__
+    def network_video_context(
+        video_id: str,
+        run_id: str | None = None,
+        run_ids: str | None = None,
+    ):
+        run_id_list = [r for r in run_ids.split(",") if r] if run_ids else None
+        return (
+            services["network"]
+            .video_context(video_id, run_id=run_id, run_ids=run_id_list)
+            .__dict__
+        )
 
     # ------------------------------------------------------------------
     # Quality / coverage

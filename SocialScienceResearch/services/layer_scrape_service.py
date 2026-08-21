@@ -26,12 +26,12 @@ edges), which is fully backward compatible.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import Any
 
 import networkx as nx
 
-from SocialScienceResearch.acquisition import AcquisitionError
 from SocialScienceResearch.acquisition.normalization import (
     normalize_channel,
     normalize_video,
@@ -66,10 +66,6 @@ from .recommendation_service import RecommendationService
 from .results import CollectionResult
 
 logger = get_logger(__name__)
-
-
-def _watch_url(video_id: str) -> str:
-    return f"https://www.youtube.com/watch?v={video_id}"
 
 
 @dataclass
@@ -315,11 +311,9 @@ class LayerScrapeService(RecommendationService):
         layer = self.get_layer(layer_run_id)
         if layer is None:
             return None
-        new_edges = [
-            e
-            for e in self._repos.recommendations.list_recommendation_edges()
-            if e.collection_run_id in layer.run_ids
-        ]
+        new_edges = self._repos.recommendations.list_recommendation_edges(
+            run_ids=list(layer.run_ids)
+        )
         discovered = []
         for video_id in layer.discovered_video_ids:
             video = self._repos.videos.get_video(video_id)
@@ -371,15 +365,18 @@ class LayerScrapeService(RecommendationService):
         Scrapes the video's recommendations, deep-enriches newly seen targets,
         classifies the additions and persists an expansion anchor plus an
         auto-created Project. Returns the anchor.
+
+        The source video does NOT need a persisted ``Video`` row: a recommended
+        video may exist only as a graph node (a target that was never
+        deep-enriched). When missing, the bulk scrape extracts + persists it
+        on the fly, mirroring :meth:`expand_all_videos`.
         """
         video = self._repos.videos.get_video(video_id)
-        if video is None:
-            raise ValueError(f"Video {video_id} not found")
         return self._expand(
             [video_id],
             filters=filters,
             kind="video",
-            parent_run_id=video.first_observed_run_id,
+            parent_run_id=video.first_observed_run_id if video else None,
             reporter=reporter,
         )
 
@@ -600,7 +597,16 @@ class LayerScrapeService(RecommendationService):
     def _resolve_slice(
         self, video_ids: list[str], run_id: str | None
     ) -> list[str]:
-        """Resolve the 'current network slice' (doc §4.2)."""
+        """Resolve the 'current network slice' (doc §4.2).
+
+        When scoping by a run, the frontier includes EVERY node in that run's
+        graph snapshot -- not just the source videos. A node may appear only as
+        a recommended target (connected from 2-3 sources) without ever having
+        had its own recommendations scraped; expanding only sources would leave
+        those target-only nodes permanently un-scraped. Including all nodes of
+        the snapshot (sources + targets) guarantees each is either already
+        scraped (flag set) or gets scraped now.
+        """
         if video_ids:
             return list(dict.fromkeys(video_ids))
         if run_id:
@@ -612,14 +618,14 @@ class LayerScrapeService(RecommendationService):
                     v.video_id
                     for v in self._repos.videos.list_videos_by_run(run.run_id)
                 ]
-            return sorted(
-                {
-                    e.source_video_id
-                    for e in self._repos.recommendations.list_recommendation_edges(
-                        run_id=run.run_id
-                    )
-                }
+            edges = self._repos.recommendations.list_recommendation_edges(
+                run_id=run.run_id
             )
+            nodes: set[str] = set()
+            for edge in edges:
+                nodes.add(edge.source_video_id)
+                nodes.add(edge.recommended_video_id)
+            return sorted(nodes)
         raise ValueError("Expansion scope requires video_ids or run_id")
 
     @staticmethod
@@ -789,11 +795,9 @@ class LayerScrapeService(RecommendationService):
         snapshot reflects the state that existed before the layer crawled.
         """
         exclude = exclude_run_ids or set()
-        edges = [
-            e
-            for e in self._repos.recommendations.list_recommendation_edges()
-            if e.collection_run_id not in exclude
-        ]
+        edges = self._repos.recommendations.list_recommendation_edges(
+            exclude_run_ids=list(exclude)
+        )
         old_graph = nx.DiGraph()
         for edge in edges:
             old_graph.add_edge(edge.source_video_id, edge.recommended_video_id)
@@ -814,6 +818,37 @@ class LayerScrapeService(RecommendationService):
             old_nodes=set(old_graph.nodes),
         )
 
+    def _is_recommendation_stub(self, video) -> bool:
+        """True when a Video row is a recommendation-stub placeholder.
+
+        Recommended targets are persisted as minimal ``Video`` rows (marked in
+        ``raw_json`` with ``_discovery.kind == "recommendation"``) so they are
+        visible in the corpus. They are still considered *new* targets for
+        deep-enrichment: enrichment overwrites the stub with the full metadata
+        and the marker disappears, so the classification stays correct.
+        """
+        discovery = (video.raw_json or {}).get("_discovery")
+        return isinstance(discovery, dict) and discovery.get("kind") == "recommendation"
+
+    def _drop_failed_stub(self, video_id: str) -> None:
+        """Delete a recommendation stub whose deep-enrichment failed.
+
+        A target whose enrichment errored must revert to a graph-node-only
+        entity (no ``Video`` row), matching the pre-stub behaviour: a failed
+        target stays discoverable through edges but is not part of the corpus.
+        Only stubs are removed -- an already enriched video is left intact.
+        """
+        try:
+            video = self._repos.videos.get_video(video_id)
+            if video is not None and self._is_recommendation_stub(video):
+                self._repos.videos.delete_video(video_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Failed to drop recommendation stub %s after enrichment error: %s",
+                video_id,
+                exc,
+            )
+
     def _enrich_new_targets(
         self,
         new_edges,
@@ -829,18 +864,25 @@ class LayerScrapeService(RecommendationService):
     ) -> list[dict[str, Any]]:
         """Deep-enrich newly seen target videos (doc §2.3/§3 step 4).
 
-        Runs one ``extract_video`` per target under the shared throttle,
-        persisting ``Video`` + ``VideoObservation`` + comments (via the
-        inherited ``_persist_comments``) and upserting the ``Channel`` when
-        resolvable. Returns a list of ``{"video", "comments", "run_id"}`` for
-        every target that was deep-enriched.
+        Runs one ``extract_video`` per target concurrently (worker threads
+        under the shared throttle), persisting ``Video`` + ``VideoObservation``
+        + comments (via the inherited ``_persist_comments``) and upserting the
+        ``Channel`` when resolvable. Returns a list of ``{"video", "comments",
+        "run_id"}`` for every target that was deep-enriched, in the
+        deterministic ``new_targets`` (sorted) order. Per-target progress is
+        reported after each target completes so long layer runs never appear
+        stalled.
 
         ``include_existing`` expands the target set to videos already in the
         corpus (network-expansion refresh); ``comment_config`` overrides the
         module-default comment criteria (network-expansion filters).
         """
         target_ids = {e.recommended_video_id for e in new_edges}
-        existing = {v.video_id for v in self._repos.videos.list_videos()}
+        existing = {
+            v.video_id
+            for v in self._repos.videos.list_videos()
+            if not self._is_recommendation_stub(v)
+        }
         new_targets = sorted(
             target_ids if include_existing else (target_ids - existing)
         )
@@ -852,71 +894,124 @@ class LayerScrapeService(RecommendationService):
             target_run.setdefault(edge.recommended_video_id, edge.collection_run_id)
         first_run_id = run_ids[0] if run_ids else None
         effective = comment_config or self._effective_comment_config()
+        concurrency = max(1, self._settings.scraper.enrichment_concurrency)
+        total = len(new_targets)
 
         self._report(
             reporter,
             "layer/enrich",
-            discovered=len(new_targets),
-            message=f"Deep-enriching {len(new_targets)} new target video(s)",
+            discovered=total,
+            message=f"Deep-enriching {total} new target video(s)",
         )
 
         enriched: list[dict[str, Any]] = []
-        for video_id in new_targets:
-            run_id = target_run.get(video_id) or first_run_id
-            run = self._repos.runs.get_run(run_id) if run_id else None
-            if run is None:
-                continue
-            try:
-                throttle.wait()
-                info = self._provider.extract_video(_watch_url(video_id))
-            except AcquisitionError as exc:
-                self._record_error(
-                    run,
-                    EntityType.VIDEO,
-                    video_id,
-                    exc.error_type,
-                    str(exc),
+        completed = 0
+        order = {video_id: index for index, video_id in enumerate(new_targets)}
+        with ThreadPoolExecutor(
+            max_workers=concurrency, thread_name_prefix="layer-enrich"
+        ) as pool:
+            futures = {
+                pool.submit(
+                    self._fetch_target_video, video_id, throttle
+                ): video_id
+                for video_id in new_targets
+            }
+            for future in as_completed(futures):
+                result = future.result()
+                video_id = result["video_id"]
+                run_id = target_run.get(video_id) or first_run_id
+                run = self._repos.runs.get_run(run_id) if run_id else None
+                if run is None:
+                    completed += 1
+                    self._report(
+                        reporter,
+                        "layer/enrich",
+                        succeeded=completed,
+                        message=f"Enriched {completed}/{total} target video(s)",
+                    )
+                    continue
+                if result["error"] is not None:
+                    exc = result["error"]
+                    self._record_error(
+                        run,
+                        EntityType.VIDEO,
+                        video_id,
+                        exc.error_type,
+                        str(exc),
+                    )
+                    errors.append(exc)
+                    self._drop_failed_stub(video_id)
+                    completed += 1
+                    self._report(
+                        reporter,
+                        "layer/enrich",
+                        succeeded=completed,
+                        message=f"Enriched {completed}/{total} target video(s)",
+                    )
+                    continue
+                info = result["info"]
+                video = normalize_video(info, run.run_id)
+                if video is None:
+                    self._record_error(
+                        run,
+                        EntityType.VIDEO,
+                        video_id,
+                        ErrorType.VALIDATION,
+                        "Could not resolve a video id for the layer target.",
+                    )
+                    self._drop_failed_stub(video_id)
+                    completed += 1
+                    self._report(
+                        reporter,
+                        "layer/enrich",
+                        succeeded=completed,
+                        message=f"Enriched {completed}/{total} target video(s)",
+                    )
+                    continue
+
+                # A target that already exists keeps its original provenance:
+                # the run that FIRST observed it, never the run that re-scraped.
+                existing = self._repos.videos.get_video(video_id)
+                if (
+                    existing is not None
+                    and existing.first_observed_run_id is not None
+                ):
+                    video.first_observed_run_id = existing.first_observed_run_id
+                self._repos.videos.upsert_video(video)
+                obs = normalize_video_observation(info, run.run_id, video.video_id)
+                if obs is not None:
+                    self._repos.videos.save_video_observation(obs)
+
+                channel = normalize_channel(info, run.run_id)
+                if channel is not None:
+                    self._repos.channels.upsert_channel(channel)
+
+                comment_count = 0
+                if collect_comments and info.get("comments"):
+                    comment_count = self._persist_comments(
+                        run,
+                        info["comments"],
+                        video.video_id,
+                        errors,
+                        effective,
+                        reporter,
+                    )
+                enriched.append(
+                    {
+                        "video": video,
+                        "comments": comment_count,
+                        "run_id": run.run_id,
+                    }
                 )
-                errors.append(exc)
-                continue
-
-            video = normalize_video(info, run.run_id)
-            if video is None:
-                self._record_error(
-                    run,
-                    EntityType.VIDEO,
-                    video_id,
-                    ErrorType.VALIDATION,
-                    "Could not resolve a video id for the layer target.",
-                )
-                continue
-
-            self._repos.videos.upsert_video(video)
-            obs = normalize_video_observation(info, run.run_id, video.video_id)
-            if obs is not None:
-                self._repos.videos.save_video_observation(obs)
-
-            channel = normalize_channel(info, run.run_id)
-            if channel is not None:
-                self._repos.channels.upsert_channel(channel)
-
-            comment_count = 0
-            if collect_comments and info.get("comments"):
-                comment_count = self._persist_comments(
-                    run,
-                    info["comments"],
-                    video.video_id,
-                    errors,
-                    effective,
+                completed += 1
+                self._report(
                     reporter,
+                    "layer/enrich",
+                    succeeded=completed,
+                    message=f"Enriched {completed}/{total} target video(s)",
                 )
-            enriched.append(
-                {
-                    "video": video,
-                    "comments": comment_count,
-                    "run_id": run.run_id,
-                }
-            )
+
+        enriched.sort(key=lambda item: order[item["video"].video_id])
         return enriched
 
     def _classify(

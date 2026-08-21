@@ -20,14 +20,16 @@ export function LayerPanel() {
   );
   const newest = layers.length ? layers[layers.length - 1] : null;
 
-  // Fall back to the newest layer while nothing is selected (initial load,
-  // or right after a crawl is kicked off).
+  // Fall back to the newest layer only while the list is still loading (initial
+  // load, or right after a crawl is kicked off). Once the list has resolved we
+  // keep the user's explicit selection so it isn't silently reverted.
   const selectedValid = layers.some(
     (layer) => layer.layer_run_id === selectedLayerRunId,
   );
-  const effectiveSelectedLayerRunId = selectedValid
-    ? selectedLayerRunId
-    : (newest?.layer_run_id ?? null);
+  const effectiveSelectedLayerRunId =
+    selectedValid || layersQuery.isLoading
+      ? selectedLayerRunId
+      : (newest?.layer_run_id ?? null);
 
   function handleStartCrawl(body: {
     parent_layer_run_id: string;

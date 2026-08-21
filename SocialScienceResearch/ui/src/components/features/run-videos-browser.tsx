@@ -21,6 +21,20 @@ function formatTags(tags: string[]): string {
   return tags.slice(0, 5).join(", ") + (tags.length > 5 ? "…" : "");
 }
 
+interface Discovery {
+  kind?: string;
+  source_video_id?: string;
+  position?: number | null;
+  run_id?: string;
+}
+
+function getDiscovery(video: RunVideo): Discovery | null {
+  const raw = video.raw_json as Record<string, unknown> | undefined;
+  const disc = raw?._discovery;
+  if (!disc || typeof disc !== "object") return null;
+  return disc as Discovery;
+}
+
 const COLUMNS: Column<RunVideo>[] = [
   {
     key: "title",
@@ -44,6 +58,27 @@ const COLUMNS: Column<RunVideo>[] = [
     ),
     sortable: true,
     sortValue: (row) => row.video_id,
+  },
+  {
+    key: "discovery",
+    header: "Source",
+    cell: (row) => {
+      const disc = getDiscovery(row);
+      if (!disc || disc.kind !== "recommendation") return <span className="text-xs text-muted-foreground">collected</span>;
+      return (
+        <Link
+          href={`/videos/${disc.source_video_id}`}
+          className="inline-flex items-center gap-1 text-xs"
+          title={`Recommended by ${disc.source_video_id}`}
+        >
+          <Badge variant="outline" className="text-xs">recommended</Badge>
+          <span className="font-mono text-[10px] text-muted-foreground truncate max-w-[120px]">
+            {disc.source_video_id}
+          </span>
+        </Link>
+      );
+    },
+    sortable: false,
   },
   {
     key: "published",

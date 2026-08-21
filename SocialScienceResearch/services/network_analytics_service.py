@@ -7,8 +7,11 @@ Extends :class:`RecommendationGraphService` with:
   communities (greedy modularity) and the top HITS hubs/authorities;
 * ``temporal`` - per-run ``NetworkSlice`` snapshots plus growth between
   consecutive requested runs;
-* ``edges`` / ``export_edges`` - raw edge listing and
-  graphml/edgelist/gexf export for interoperability with external tools;
+* ``edges`` / ``export_edges`` / ``export_network`` - raw edge listing and
+  graphml/edgelist/gexf/csv/json export for interoperability with external
+  tools, scoped by run, run set (expansion action) or video ego;
+* ``merge_networks`` - overlap (shared nodes/edges, Jaccard) + combined SNA
+  statistics over the union of two scopes;
 * ``graph`` - enriched node/edge payload that drives the interactive graph UI
   (every node carries ``[ID] + Channel Name + Video Title + metrics``);
 * ``channel_projection`` - a lightweight channel-level projection.
@@ -45,12 +48,16 @@ for the statistics it has no row for.
 
 from __future__ import annotations
 
+import csv
 import io
+import json
+from datetime import datetime
+from io import StringIO
 from typing import Any
 
 import networkx as nx
 from networkx.algorithms.community import greedy_modularity_communities, modularity
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from SocialScienceResearch.persistence.base import Repositories
 from SocialScienceResearch.services.recommendation_graph_service import (
@@ -63,6 +70,40 @@ DEFAULT_PAGE_SIZE = 50
 
 #: Which endpoint of an edge a ``channel_id`` filter matches by default.
 ChannelScope = str  # "source" | "target" | "either"
+
+
+def _jaccard(intersection: int, union: int) -> float | None:
+    """None/zero-safe Jaccard coefficient (mirrors StatisticsService.ratio)."""
+    if not union:
+        return None
+    return round(intersection / union, 6)
+
+
+def _csv_cell(value: Any) -> Any:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, default=str)
+    return value
+
+
+def _dedupe_edge_rows(rows: list[EdgeRow]) -> list[EdgeRow]:
+    """Drop duplicate ``(source, target)`` edge rows keeping the first seen.
+
+    The union graph de-duplicates edges; the merged edge listing must agree
+    with it (a shared edge observed by both scopes is one union edge).
+    """
+    seen: set[tuple[str, str]] = set()
+    unique: list[EdgeRow] = []
+    for row in rows:
+        key = (row.source_video_id, row.recommended_video_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(row)
+    return unique
 
 
 class _Base(BaseModel):
@@ -266,6 +307,7 @@ class GraphNode(_Base):
     run_ids: list[str] = []
     run_types: list[str] = []
     community_id: int | None = None
+    recommendations_scraped: bool = False
 
 
 class GraphEdge(_Base):
@@ -297,41 +339,148 @@ class NetworkGraph(_Base):
     edge_count: int = 0
 
 
+class NetworkScope(_Base):
+    """A video-network scope for export / merge operations.
+
+    ``run_id`` pins the slice to one collection run; ``run_ids`` pins it to a
+    set of runs (a network-expansion action's runs); ``video_ids`` keeps only
+    the ego edges touching any of the listed videos. When every field is empty
+    the scope is the whole persisted recommendation network.
+    """
+
+    run_id: str | None = None
+    run_ids: list[str] = Field(default_factory=list)
+    video_ids: list[str] = Field(default_factory=list)
+
+    def is_empty(self) -> bool:
+        return not self.run_id and not self.run_ids and not self.video_ids
+
+
+class OverlapStats(_Base):
+    """Shared/exclusive node & edge counts between two network scopes.
+
+    ``jaccard_*`` is ``None`` when the union is empty (no meaningful ratio),
+    never fabricated as 0. Edge identity is directed (``source->target``).
+    """
+
+    scope_a_node_count: int = 0
+    scope_b_node_count: int = 0
+    scope_a_edge_count: int = 0
+    scope_b_edge_count: int = 0
+    shared_node_count: int = 0
+    shared_edge_count: int = 0
+    union_node_count: int = 0
+    union_edge_count: int = 0
+    nodes_only_in_a: int = 0
+    nodes_only_in_b: int = 0
+    edges_only_in_a: int = 0
+    edges_only_in_b: int = 0
+    jaccard_node_overlap: float | None = None
+    jaccard_edge_overlap: float | None = None
+
+
+class MergedDegreeNode(_Base):
+    """A top-degree node of a merged network with resolvable labels.
+
+    Follows the module's label-hygiene rule: a bare video id is never shown
+    without context, so titles/channel names are resolved from persisted
+    repositories when available (``None`` only when nothing was persisted).
+    """
+
+    video_id: str
+    title: str | None = None
+    channel_id: str | None = None
+    channel_name: str | None = None
+    in_degree: int = 0
+    out_degree: int = 0
+    total_degree: int = 0
+
+
+class MergedGraphStats(_Base):
+    """Combined SNA statistics over the union of two scopes.
+
+    Mirrors ``NetworkMetrics`` so the merged-graph report reads like any other
+    network slice, plus ``top_degree_nodes`` (labeled, deterministically
+    ordered by total degree then id).
+    """
+
+    node_count: int = 0
+    edge_count: int = 0
+    density: float = 0.0
+    is_directed: bool = True
+    reciprocity: float = 0.0
+    degree_distribution: dict[str, DegreeDistribution] = {}
+    avg_clustering: float = 0.0
+    global_clustering: float = 0.0
+    weakly_connected_components: int = 0
+    largest_component_size: int = 0
+    largest_component_share: float = 0.0
+    community_count: int = 0
+    modularity: float | None = None
+    top_degree_nodes: list[MergedDegreeNode] = []
+
+
+class MergedNetworkResult(_Base):
+    """Overlap report + merged SNA stats for two network scopes.
+
+    ``nodes``/``edges`` carry the enriched union graph (labels resolved, same
+    shape as ``NetworkGraph``) so the UI can render the merged net, while
+    ``overlap`` answers "how much do these two nets share?".
+    """
+
+    scope_a: NetworkScope
+    scope_b: NetworkScope
+    overlap: OverlapStats
+    merged: MergedGraphStats
+    nodes: list[GraphNode] = []
+    edges: list[GraphEdge] = []
+    node_count: int = 0
+    edge_count: int = 0
+
+
+class NetworkMergeOptions(_Base):
+    """Picker payload for ``GET /network/merge/options``.
+
+    Lists the run and expansion-action scopes the UI can merge. Videos are
+    intentionally omitted (could be huge); the video-ego scope is entered as
+    free-form ``video_ids``.
+    """
+
+    runs: list[dict[str, Any]] = []  # {run_id, run_type, name}
+    expansions: list[dict[str, Any]] = []  # {action_id, kind, project_id, video_ids, run_ids, started_at}
+
+
 class _MetadataIndex:
     """Batch-resolved metadata caches shared across one edge-list call.
 
-    Built with a handful of repository scans (no per-edge N+1):
-    ``list_videos``, ``get_latest_video_observations``, ``list_channels`` and
-    ``list_runs``.
+    Built with a handful of repository scans (no per-edge N+1) using the
+    column-projected ``list_video_metadata``/``latest_observation_metrics``/
+    ``list_channel_titles`` reads so heavy ``raw_json`` TOAST blobs (up to
+    ~200KB/row) are never fetched on the analytics hot path.
     """
 
     def __init__(self, repos: Repositories) -> None:
         self._repos = repos
-        videos = {v.video_id: v for v in repos.videos.list_videos()}
-        self._videos = videos
-        self._observations = repos.videos.get_latest_video_observations(list(videos))
-        channels = {c.channel_id: c for c in repos.channels.list_channels()}
-        self._channels = channels
+        self._videos = repos.videos.list_video_metadata()
+        self._metrics = repos.videos.latest_observation_metrics(list(self._videos))
+        self._channels = repos.channels.list_channel_titles()
         self._runs = {r.run_id: r for r in repos.runs.list_runs()}
 
     def video(self, video_id: str) -> dict[str, Any]:
         video = self._videos.get(video_id)
         if video is None:
             return {}
-        obs = self._observations.get(video_id)
-        channel_name = (
-            self._channels.get(video.channel_id).title
-            if video.channel_id and self._channels.get(video.channel_id)
-            else None
-        )
+        metrics = self._metrics.get(video_id, {})
+        channel_id = video.get("channel_id")
         return {
-            "title": video.title,
-            "channel_id": video.channel_id,
-            "channel_name": channel_name,
-            "thumbnail_url": video.thumbnail_url,
-            "views": obs.view_count if obs else None,
-            "likes": obs.like_count if obs else None,
-            "duration": video.duration,
+            "title": video.get("title"),
+            "channel_id": channel_id,
+            "channel_name": self._channels.get(channel_id) if channel_id else None,
+            "thumbnail_url": video.get("thumbnail_url"),
+            "views": metrics.get("view_count"),
+            "likes": metrics.get("like_count"),
+            "duration": video.get("duration"),
+            "recommendations_scraped": video.get("recommendations_scraped", False),
         }
 
     def run(self, run_id: str | None) -> tuple[str | None, str | None]:
@@ -354,6 +503,21 @@ class NetworkAnalyticsService:
     def metrics(self, run_id: str | None = None, top_n: int = 10) -> NetworkMetrics:
         """Compute aggregate network statistics for one slice."""
         graph = self._graph_service.build_graph(run_id)
+        return self._metrics_for_graph(graph, run_id=run_id, top_n=top_n)
+
+    def _metrics_for_graph(
+        self,
+        graph: nx.DiGraph,
+        *,
+        run_id: str | None = None,
+        top_n: int = 10,
+    ) -> NetworkMetrics:
+        """Aggregate statistics for an already-built ``nx.DiGraph``.
+
+        Shared by :meth:`metrics` (one run / whole network) and
+        :meth:`merge_networks` (the union of two scopes) so the merged report
+        reads exactly like any other network slice.
+        """
         metrics = NetworkMetrics(
             run_id=run_id,
             node_count=graph.number_of_nodes(),
@@ -432,6 +596,58 @@ class NetworkAnalyticsService:
         return TemporalResult(slices=slices, growth=growth)
 
     # ------------------------------------------------------------------
+    def _raw_edges(
+        self,
+        *,
+        run_id: str | None = None,
+        run_ids: list[str] | None = None,
+        video_ids: list[str] | None = None,
+        channel_id: str | None = None,
+        channel_scope: ChannelScope = "source",
+        layer_index: int | None = None,
+    ) -> list[Any]:
+        """Raw recommendation edges matching the given scope filters.
+
+        ``video_ids`` keeps only the ego edges touching any listed video
+        (``source`` or ``target`` in the set); ``run_ids`` limits to a set of
+        runs; the channel filters mirror :meth:`edges`. Used by the enriched
+        ``edges()``/``graph()`` paths and the export/merge machinery so every
+        view of a slice agrees on the same edge set.
+        """
+        video_set = set(video_ids or [])
+        channel = channel_id
+        metadata = _MetadataIndex(self._repos) if channel else None
+        edges: list[Any] = []
+        for edge in self._repos.recommendations.list_recommendation_edges(
+            run_id=run_id
+        ):
+            if layer_index is not None and edge.layer_index != layer_index:
+                continue
+            if run_ids is not None and edge.collection_run_id not in run_ids:
+                continue
+            if video_set and (
+                edge.source_video_id not in video_set
+                and edge.recommended_video_id not in video_set
+            ):
+                continue
+            if channel:
+                source_meta = metadata.video(edge.source_video_id)
+                target_meta = metadata.video(edge.recommended_video_id)
+                source_channel = source_meta.get("channel_id")
+                target_channel = target_meta.get("channel_id") or edge.channel_id
+                if channel_scope == "target":
+                    if target_channel != channel:
+                        continue
+                elif channel_scope == "either":
+                    if source_channel != channel and target_channel != channel:
+                        continue
+                else:  # default "source"
+                    if source_channel != channel:
+                        continue
+            edges.append(edge)
+        return edges
+
+    # ------------------------------------------------------------------
     def edges(
         self,
         run_id: str | None = None,
@@ -439,6 +655,7 @@ class NetworkAnalyticsService:
         channel_scope: ChannelScope = "source",
         layer_index: int | None = None,
         run_ids: list[str] | None = None,
+        video_ids: list[str] | None = None,
     ) -> list[EdgeRow]:
         """Serialize all observed edges for a slice (export/listing).
 
@@ -451,35 +668,22 @@ class NetworkAnalyticsService:
         their 1->N recommendation trees); pass ``channel_scope="target"`` or
         ``"either"`` for the other endpoint semantics. ``layer_index`` limits
         the slice to edges produced by a specific crawl layer (``None`` = all);
-        ``run_ids`` limits the slice to a set of runs (network expansions).
+        ``run_ids`` limits the slice to a set of runs (network expansions);
+        ``video_ids`` keeps the ego edges touching any of the listed videos.
         """
         metadata = _MetadataIndex(self._repos)
         rows: list[EdgeRow] = []
-        for edge in self._repos.recommendations.list_recommendation_edges(
-            run_id=run_id
+        for edge in self._raw_edges(
+            run_id=run_id,
+            run_ids=run_ids,
+            video_ids=video_ids,
+            channel_id=channel_id,
+            channel_scope=channel_scope,
+            layer_index=layer_index,
         ):
-            if layer_index is not None and edge.layer_index != layer_index:
-                continue
-            if run_ids is not None and edge.collection_run_id not in run_ids:
-                continue
             source_meta = metadata.video(edge.source_video_id)
             target_meta = metadata.video(edge.recommended_video_id)
             run_type, run_name = metadata.run(edge.collection_run_id)
-
-            if channel_id:
-                source_channel = source_meta.get("channel_id")
-                target_channel = (
-                    target_meta.get("channel_id") or edge.channel_id
-                )
-                if channel_scope == "target":
-                    if target_channel != channel_id:
-                        continue
-                elif channel_scope == "either":
-                    if source_channel != channel_id and target_channel != channel_id:
-                        continue
-                else:  # default "source"
-                    if source_channel != channel_id:
-                        continue
 
             rows.append(
                 EdgeRow(
@@ -526,6 +730,9 @@ class NetworkAnalyticsService:
         channel_scope: ChannelScope = "source",
         layer_index: int | None = None,
         run_ids: list[str] | None = None,
+        video_ids: list[str] | None = None,
+        connected: str | None = None,
+        scraped: str | None = None,
     ) -> NetworkGraph:
         """Enriched node/edge payload driving the interactive graph UI.
 
@@ -534,7 +741,11 @@ class NetworkAnalyticsService:
         provenance (run_ids/run_types). Facets (runs, channels) let the filter
         bar populate from real data without a second request. ``layer_index``
         limits the slice to one crawl layer (``None`` = all); ``run_ids``
-        limits the slice to a set of runs (network expansions).
+        limits the slice to a set of runs (network expansions); ``video_ids``
+        keeps the ego edges touching any of the listed videos. ``connected``
+        keeps only connected (``"only"``) or only isolated (``"isolated"``)
+        nodes; ``scraped`` keeps only scraped (``"scraped"``) or only
+        never-scraped (``"unscraped"``) nodes.
         """
         rows = self.edges(
             run_id=run_id,
@@ -542,6 +753,7 @@ class NetworkAnalyticsService:
             channel_scope=channel_scope,
             layer_index=layer_index,
             run_ids=run_ids,
+            video_ids=video_ids,
         )
 
         in_degree: dict[str, int] = {}
@@ -580,10 +792,22 @@ class NetworkAnalyticsService:
         # repository-backed resolver - never fabricated. Targets that were
         # never persisted still carry whatever the provider observed on the
         # edge row itself (channel id/name, title).
-        video_ids = list(dict.fromkeys(
+        connected_ids = list(dict.fromkeys(
             [row.source_video_id for row in rows]
             + [row.recommended_video_id for row in rows]
         ))
+        connected_set = set(connected_ids)
+
+        # Isolated (non-connected) nodes: videos persisted in the corpus with
+        # no edge in the slice. They render detached. Only included when the
+        # caller explicitly asks for the isolated view (or every node is
+        # isolated because the slice has no edges).
+        isolated_ids: list[str] = []
+        if connected == "isolated" or not rows:
+            corpus = set(self._repos.videos.list_video_metadata())
+            isolated_ids = sorted(corpus - connected_set)
+        video_ids = connected_ids if connected != "isolated" else isolated_ids
+
         edge_meta: dict[str, dict[str, Any]] = {}
         for row in rows:
             edge_meta.setdefault(
@@ -641,15 +865,24 @@ class NetworkAnalyticsService:
                     run_ids=sorted(run_ids_by_node.get(video_id, set())),
                     run_types=sorted(run_types_by_node.get(video_id, set())),
                     community_id=node_community.get(video_id),
+                    recommendations_scraped=bool(info.get("recommendations_scraped")),
                 )
             )
 
-        channel_rows = {c.channel_id: c for c in self._repos.channels.list_channels()}
+        # Selection filter on scrape state: 'scraped' keeps only nodes whose
+        # recommendation feed has been scraped; 'unscraped' keeps the rest
+        # (the candidates for a next expansion).
+        if scraped == "scraped":
+            nodes = [n for n in nodes if n.recommendations_scraped]
+        elif scraped == "unscraped":
+            nodes = [n for n in nodes if not n.recommendations_scraped]
+
+        channel_rows = self._repos.channels.list_channel_titles()
         channel_ids = sorted({n.channel_id for n in nodes if n.channel_id})
         channels = [
             ChannelFacet(
                 channel_id=cid,
-                channel_name=channel_rows.get(cid).title if channel_rows.get(cid) else None,
+                channel_name=channel_rows.get(cid),
             )
             for cid in channel_ids
         ]
@@ -678,41 +911,401 @@ class NetworkAnalyticsService:
     def export_edges(
         self, run_id: str | None = None, format: str = "graphml"
     ) -> tuple[str, str, str]:
-        """Serialize the network into a file-format string.
+        """Serialize the network into a file-format string (backwards compat).
 
-        Returns ``(suggested_filename, content, media_type)``. Raises
-        ``ValueError`` for an unsupported ``format``.
+        Thin wrapper over :meth:`export_network` keeping the historical
+        single-``run_id`` signature; new scopes (run sets, video egos) and the
+        ``csv``/``json`` formats are available there.
         """
-        graph = self._graph_service.build_graph(run_id)
-        # GraphML/edgelist cannot serialize ``None`` edge-attrs, so sink them
-        # to empty strings on a copy before writing.
-        export = graph.copy()
-        for _, _, data in export.edges(data=True):
-            for key in ("position", "run_id", "title"):
-                if data.get(key) is None:
-                    data[key] = ""
+        return self.export_network(format, run_id=run_id)
 
-        formats = {
+    def export_network(
+        self,
+        format: str = "graphml",
+        *,
+        run_id: str | None = None,
+        run_ids: list[str] | None = None,
+        video_ids: list[str] | None = None,
+    ) -> tuple[str, str | bytes, str]:
+        """Serialize a scoped video network into a file-format payload.
+
+        Returns ``(suggested_filename, content, media_type)``. Supported
+        formats: ``graphml``, ``edgelist``, ``gexf`` (graph-based, via
+        networkx) and ``csv``/``json`` (edge-row based, labeled via
+        :meth:`edges` so exports carry readable titles/channels - never bare
+        ids) plus ``xlsx`` (a workbook with the same columns). Text formats
+        return ``str`` content; binary formats (``xlsx``) return ``bytes``.
+        ``run_ids`` limits the slice to a set of runs (a network expansion's
+        runs); ``video_ids`` keeps the ego edges touching any listed video.
+        Raises ``ValueError`` for an unsupported ``format``.
+        """
+        fmt = (format or "").strip().lower()
+        graph_formats = {
             "graphml": ("recommendations.graphml", "application/xml"),
             "edgelist": ("recommendations.edgelist", "text/plain"),
             "gexf": ("recommendations.gexf", "application/gexf+xml"),
         }
-        if format not in formats:
-            raise ValueError(
-                f"Unsupported export format '{format}' (expected one of: "
-                + ", ".join(sorted(formats))
-                + ")"
+        if fmt in graph_formats:
+            filename, media_type = graph_formats[fmt]
+            graph = self._graph_from_edges(
+                self._raw_edges(run_id=run_id, run_ids=run_ids, video_ids=video_ids)
             )
-        filename, media_type = formats[format]
+            # GraphML/edgelist cannot serialize ``None`` edge-attrs, so sink
+            # them to empty strings on a copy before writing.
+            export = graph.copy()
+            for _, _, data in export.edges(data=True):
+                for key in ("position", "run_id", "title", "channel_id"):
+                    if data.get(key) is None:
+                        data[key] = ""
 
-        buffer = io.BytesIO()
-        if format == "graphml":
-            nx.write_graphml(export, buffer)
-        elif format == "edgelist":
-            nx.write_edgelist(export, buffer)
+            buffer = io.BytesIO()
+            if fmt == "graphml":
+                nx.write_graphml(export, buffer)
+            elif fmt == "edgelist":
+                nx.write_edgelist(export, buffer)
+            else:
+                nx.write_gexf(export, buffer)
+            return filename, buffer.getvalue().decode("utf-8"), media_type
+
+        rows = self.edges(run_id=run_id, run_ids=run_ids, video_ids=video_ids)
+        columns = [
+            "source_video_id",
+            "recommended_video_id",
+            "position",
+            "run_id",
+            "run_type",
+            "run_name",
+            "source_title",
+            "source_channel_id",
+            "source_channel_name",
+            "title",
+            "channel_id",
+            "channel_name",
+            "views",
+            "likes",
+            "duration",
+        ]
+        if fmt == "csv":
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, dialect="excel")
+            writer.writerow(columns)
+            for row in rows:
+                writer.writerow(
+                    [_csv_cell(getattr(row, column)) for column in columns]
+                )
+            return "recommendations.csv", buffer.getvalue(), "text/csv"
+
+        if fmt == "json":
+            payload = {
+                "scope": {
+                    "run_id": run_id,
+                    "run_ids": run_ids or [],
+                    "video_ids": video_ids or [],
+                },
+                "node_count": len({n for row in rows for n in (row.source_video_id, row.recommended_video_id)}),
+                "edge_count": len(rows),
+                "columns": columns,
+                "edges": [row.model_dump(mode="json") for row in rows],
+            }
+            return (
+                "recommendations.json",
+                json.dumps(payload, ensure_ascii=False, default=str),
+                "application/json",
+            )
+
+        if fmt == "xlsx":
+            from openpyxl import Workbook
+            from openpyxl.styles import Font
+
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = "Recommendations"
+            sheet.append(columns)
+            for cell in sheet[1]:
+                cell.font = Font(bold=True)
+            for row in rows:
+                sheet.append([_csv_cell(getattr(row, column)) for column in columns])
+            buffer = io.BytesIO()
+            workbook.save(buffer)
+            return "recommendations.xlsx", buffer.getvalue(), (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+        valid = sorted(set(graph_formats) | {"csv", "json", "xlsx"})
+        raise ValueError(
+            f"Unsupported export format '{fmt}' (expected one of: "
+            f"{', '.join(valid)})"
+        )
+    # ------------------------------------------------------------------
+    def merge_networks(
+        self,
+        scope_a: NetworkScope,
+        scope_b: NetworkScope,
+        *,
+        top_n: int = 10,
+    ) -> MergedNetworkResult:
+        """Merge two scoped networks: overlap report + combined SNA stats.
+
+        The union graph is built over the directed edges of both scopes
+        (edge attrs are copied, never shared), overlap is measured on node
+        sets and directed ``(source, target)`` edge sets, and the merged
+        statistics come from the same ``_metrics_for_graph`` path as
+        :meth:`metrics`. Enriched nodes/edges (labels resolved) are included
+        so the UI can render the merged net.
+        """
+        edges_a = self._raw_edges(
+            run_id=scope_a.run_id, run_ids=scope_a.run_ids or None, video_ids=scope_a.video_ids or None
+        )
+        edges_b = self._raw_edges(
+            run_id=scope_b.run_id, run_ids=scope_b.run_ids or None, video_ids=scope_b.video_ids or None
+        )
+        graph_a = self._graph_from_edges(edges_a)
+        graph_b = self._graph_from_edges(edges_b)
+
+        nodes_a, nodes_b = set(graph_a.nodes), set(graph_b.nodes)
+        edges_a_set, edges_b_set = set(graph_a.edges()), set(graph_b.edges())
+        shared_nodes = nodes_a & nodes_b
+        shared_edges = edges_a_set & edges_b_set
+        union_nodes = nodes_a | nodes_b
+        union_edges = edges_a_set | edges_b_set
+
+        overlap = OverlapStats(
+            scope_a_node_count=len(nodes_a),
+            scope_b_node_count=len(nodes_b),
+            scope_a_edge_count=len(edges_a_set),
+            scope_b_edge_count=len(edges_b_set),
+            shared_node_count=len(shared_nodes),
+            shared_edge_count=len(shared_edges),
+            union_node_count=len(union_nodes),
+            union_edge_count=len(union_edges),
+            nodes_only_in_a=len(nodes_a - nodes_b),
+            nodes_only_in_b=len(nodes_b - nodes_a),
+            edges_only_in_a=len(edges_a_set - edges_b_set),
+            edges_only_in_b=len(edges_b_set - edges_a_set),
+            jaccard_node_overlap=_jaccard(len(shared_nodes), len(union_nodes)),
+            jaccard_edge_overlap=_jaccard(len(shared_edges), len(union_edges)),
+        )
+
+        union = nx.DiGraph()
+        for source, target, data in graph_a.edges(data=True):
+            union.add_edge(source, target, **dict(data))
+        for source, target, data in graph_b.edges(data=True):
+            union.add_edge(source, target, **dict(data))
+
+        merged = self._metrics_for_graph(union, top_n=top_n)
+        merged_stats = MergedGraphStats(
+            node_count=merged.node_count,
+            edge_count=merged.edge_count,
+            density=merged.density,
+            is_directed=True,
+            reciprocity=merged.reciprocity,
+            degree_distribution=merged.degree_distribution,
+            avg_clustering=merged.avg_clustering,
+            global_clustering=merged.global_clustering,
+            weakly_connected_components=merged.weakly_connected_components,
+            largest_component_size=merged.largest_component_size,
+            largest_component_share=merged.largest_component_share,
+            community_count=merged.community_count,
+            modularity=merged.modularity,
+            top_degree_nodes=self._top_degree_nodes(union, top_n),
+        )
+
+        graph_payload = self._graph_payload_from_rows(
+            _dedupe_edge_rows(
+                self.edges(run_id=scope_a.run_id, run_ids=scope_a.run_ids or None, video_ids=scope_a.video_ids or None)
+                + self.edges(run_id=scope_b.run_id, run_ids=scope_b.run_ids or None, video_ids=scope_b.video_ids or None)
+            ),
+            union=union,
+        )
+        return MergedNetworkResult(
+            scope_a=scope_a,
+            scope_b=scope_b,
+            overlap=overlap,
+            merged=merged_stats,
+            nodes=graph_payload[0],
+            edges=graph_payload[1],
+            node_count=len(graph_payload[0]),
+            edge_count=len(graph_payload[1]),
+        )
+
+    # ------------------------------------------------------------------
+    def merge_options(self) -> NetworkMergeOptions:
+        """Runs + expansion actions the UI can pick as merge scopes."""
+        runs = [
+            {
+                "run_id": r.run_id,
+                "run_type": r.run_type.value if r.run_type else None,
+                "name": r.name,
+            }
+            for r in self._repos.runs.list_runs()
+        ]
+        expansions = []
+        for layer in self._repos.layers.list_layer_runs():
+            if layer.config_json.get("expansion") is None:
+                continue
+            expansion = layer.config_json["expansion"]
+            expansions.append(
+                {
+                    "action_id": layer.layer_run_id,
+                    "kind": expansion.get("kind", "all"),
+                    "project_id": expansion.get("project_id"),
+                    "video_ids": list(layer.frontier_video_ids),
+                    "run_ids": list(layer.run_ids),
+                    "started_at": layer.started_at.isoformat(),
+                }
+            )
+        expansions.sort(key=lambda e: e["started_at"], reverse=True)
+        return NetworkMergeOptions(runs=runs, expansions=expansions)
+
+    # ------------------------------------------------------------------
+    def _top_degree_nodes(
+        self, graph: nx.DiGraph, top_n: int
+    ) -> list[MergedDegreeNode]:
+        """Top-``n`` nodes by total (in+out) degree, labels resolved."""
+        metadata = _MetadataIndex(self._repos)
+        ranked = sorted(
+            graph.nodes(),
+            key=lambda node: (
+                -(graph.in_degree(node) + graph.out_degree(node)),
+                node,
+            ),
+        )
+        rows: list[MergedDegreeNode] = []
+        for node in ranked[:top_n]:
+            info = metadata.video(node)
+            rows.append(
+                MergedDegreeNode(
+                    video_id=node,
+                    title=info.get("title"),
+                    channel_id=info.get("channel_id"),
+                    channel_name=info.get("channel_name"),
+                    in_degree=graph.in_degree(node),
+                    out_degree=graph.out_degree(node),
+                    total_degree=graph.in_degree(node) + graph.out_degree(node),
+                )
+            )
+        return rows
+
+    # ------------------------------------------------------------------
+    def _graph_payload_from_rows(
+        self, rows: list[EdgeRow], union: nx.DiGraph
+    ) -> tuple[list[GraphNode], list[GraphEdge]]:
+        """Enriched nodes/edges for the merged graph (labels resolved).
+
+        Mirrors the node building of :meth:`graph` (degree/kind/provenance/
+        community) over the caller-supplied ``union`` graph so community ids
+        reflect the merged network, not either scope alone.
+        """
+        in_degree: dict[str, int] = {}
+        out_degree: dict[str, int] = {}
+        run_ids_by_node: dict[str, set[str]] = {}
+        run_types_by_node: dict[str, set[str]] = {}
+
+        edges: list[GraphEdge] = []
+        for row in rows:
+            edges.append(
+                GraphEdge(
+                    source=row.source_video_id,
+                    target=row.recommended_video_id,
+                    position=row.position,
+                    run_id=row.run_id,
+                    run_type=row.run_type,
+                    run_name=row.run_name,
+                    title=row.title,
+                )
+            )
+            out_degree[row.source_video_id] = out_degree.get(row.source_video_id, 0) + 1
+            in_degree[row.recommended_video_id] = (
+                in_degree.get(row.recommended_video_id, 0) + 1
+            )
+            for video_id, edge_run_id, edge_run_type in (
+                (row.source_video_id, row.run_id, row.run_type),
+                (row.recommended_video_id, row.run_id, row.run_type),
+            ):
+                if edge_run_id:
+                    run_ids_by_node.setdefault(video_id, set()).add(edge_run_id)
+                if edge_run_type:
+                    run_types_by_node.setdefault(video_id, set()).add(edge_run_type)
+
+        video_ids = list(
+            dict.fromkeys(
+                [row.source_video_id for row in rows]
+                + [row.recommended_video_id for row in rows]
+            )
+        )
+        edge_meta: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            edge_meta.setdefault(
+                row.recommended_video_id,
+                {"channel_id": row.channel_id, "channel_name": row.channel_name,
+                 "title": row.title},
+            )
+        metadata = _MetadataIndex(self._repos)
+
+        if union.number_of_edges() > 0:
+            undirected = union.to_undirected()
+            communities = sorted(
+                greedy_modularity_communities(undirected),
+                key=len,
+                reverse=True,
+            )
+            node_community = {
+                video_id: idx
+                for idx, community in enumerate(communities)
+                for video_id in community
+            }
         else:
-            nx.write_gexf(export, buffer)
-        return filename, buffer.getvalue().decode("utf-8"), media_type
+            node_community = {}
+
+        nodes: list[GraphNode] = []
+        for video_id in video_ids:
+            info = metadata.video(video_id)
+            fallback = edge_meta.get(video_id, {})
+            n_in = in_degree.get(video_id, 0)
+            n_out = out_degree.get(video_id, 0)
+            kind = "other"
+            if n_out > 0 and n_in > 0:
+                kind = "both"
+            elif n_out > 0:
+                kind = "source"
+            elif n_in > 0:
+                kind = "target"
+            nodes.append(
+                GraphNode(
+                    video_id=video_id,
+                    title=info.get("title") or fallback.get("title"),
+                    channel_id=info.get("channel_id") or fallback.get("channel_id"),
+                    channel_name=info.get("channel_name") or fallback.get("channel_name"),
+                    thumbnail_url=info.get("thumbnail_url"),
+                    views=info.get("views"),
+                    likes=info.get("likes"),
+                    duration=info.get("duration"),
+                    kind=kind,
+                    in_degree=n_in,
+                    out_degree=n_out,
+                    run_ids=sorted(run_ids_by_node.get(video_id, set())),
+                    run_types=sorted(run_types_by_node.get(video_id, set())),
+                    community_id=node_community.get(video_id),
+                    recommendations_scraped=bool(info.get("recommendations_scraped")),
+                )
+            )
+        return nodes, edges
+
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _graph_from_edges(edges: list[Any]) -> nx.DiGraph:
+        """Build the canonical ``nx.DiGraph`` from raw recommendation edges."""
+        graph = nx.DiGraph()
+        for edge in edges:
+            graph.add_edge(
+                edge.source_video_id,
+                edge.recommended_video_id,
+                position=edge.position,
+                run_id=edge.collection_run_id,
+                title=edge.title,
+                channel_id=edge.channel_id,
+            )
+        return graph
 
     # ------------------------------------------------------------------
     def channel_projection(
@@ -725,16 +1318,14 @@ class NetworkAnalyticsService:
         row exists so the picker is human-readable.
         """
         edges = self._repos.recommendations.list_recommendation_edges(run_id=run_id)
-        channel_rows = {c.channel_id: c for c in self._repos.channels.list_channels()}
+        channel_rows = self._repos.channels.list_channel_titles()
         channels = sorted({e.channel_id for e in edges if e.channel_id})
         edge_count = sum(1 for e in edges if e.channel_id)
         return ChannelProjection(
             channels=[
                 ChannelFacet(
                     channel_id=cid,
-                    channel_name=channel_rows.get(cid).title
-                    if channel_rows.get(cid)
-                    else None,
+                    channel_name=channel_rows.get(cid),
                 )
                 for cid in channels
             ],
@@ -835,20 +1426,20 @@ class NetworkAnalyticsService:
                     }
                 )
 
-        channel_rows = {c.channel_id: c for c in self._repos.channels.list_channels()}
-        latest_observations = self._repos.channels.get_latest_channel_observations(
+        channel_rows = self._repos.channels.list_channel_descriptors()
+        latest_observations = self._repos.channels.latest_channel_metrics(
             list(channel_videos)
         )
         nodes: list[ChannelGraphNode] = []
         for channel_id in sorted(channel_videos):
-            channel = channel_rows.get(channel_id)
-            obs = latest_observations.get(channel_id)
+            channel = channel_rows.get(channel_id) or {}
+            obs = latest_observations.get(channel_id) or {}
             nodes.append(
                 ChannelGraphNode(
                     channel_id=channel_id,
-                    channel_name=channel.title if channel else None,
-                    avatar_url=channel.avatar_url if channel else None,
-                    subscriber_count=obs.subscriber_count if obs else None,
+                    channel_name=channel.get("title"),
+                    avatar_url=channel.get("avatar_url"),
+                    subscriber_count=obs.get("subscriber_count"),
                     video_count=len(channel_videos[channel_id]),
                     in_degree=len(in_neighbours.get(channel_id, set())),
                     out_degree=len(out_neighbours.get(channel_id, set())),
@@ -874,7 +1465,7 @@ class NetworkAnalyticsService:
         channels = [
             ChannelFacet(
                 channel_id=cid,
-                channel_name=channel_rows.get(cid).title if channel_rows.get(cid) else None,
+                channel_name=channel_rows.get(cid, {}).get("title"),
             )
             for cid in channel_ids
         ]

@@ -330,3 +330,49 @@ def test_job_result_404(tmp_path) -> None:
     client = TestClient(app)
     resp = client.get(f"{PREFIX}/jobs/nope/result")
     assert resp.status_code == 404
+
+
+def test_job_stream_emits_terminal_snapshot(tmp_path) -> None:
+    """SSE stream pushes the final (succeeded) snapshot and closes."""
+    app = create_app(_settings(tmp_path), provider=InstantProvider())
+    client = TestClient(app)
+
+    resp = client.post(f"{PREFIX}/collect", json=_spec_payload())
+    job_id = resp.json()["job_id"]
+
+    with client.stream("GET", f"{PREFIX}/jobs/{job_id}/stream") as stream:
+        events = _parse_sse(stream.iter_lines())
+    assert stream.status_code == 200
+    assert events, "stream closed without any events"
+    last = events[-1]
+    assert last["job_id"] == job_id
+    assert last["status"] == "succeeded"
+
+
+def test_job_stream_404_unknown_job(tmp_path) -> None:
+    app = create_app(_settings(tmp_path), provider=InstantProvider())
+    client = TestClient(app)
+    resp = client.get(f"{PREFIX}/jobs/nope/stream")
+    assert resp.status_code == 404
+
+
+def _parse_sse(lines) -> list[dict[str, Any]]:
+    """Collect ``data:`` payloads from an SSE line iterator into JSON dicts."""
+    events: list[dict[str, Any]] = []
+    current: list[str] = []
+    for line in lines:
+        if line == "":
+            if current:
+                data = "\n".join(current)
+                if data.startswith("data: "):
+                    import json as _json
+
+                    events.append(_json.loads(data[len("data: "):]))
+                current = []
+        elif line.startswith("data: "):
+            current.append(line)
+        elif line.startswith(":"):
+            continue  # keep-alive comment
+        else:
+            current.append(line)
+    return events

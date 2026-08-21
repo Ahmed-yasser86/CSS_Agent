@@ -36,7 +36,15 @@ class NetworkSummary:
 
 @dataclass
 class VideoNetworkContext:
-    """Ego-network view for one video."""
+    """Ego-network view for one video.
+
+    ``recommended_by``/``recommends`` stay the canonical 1-hop neighbourhood
+    (source -> video, video -> target). ``graph_edges`` is the *connected
+    slice*: every observed edge whose source OR recommended target lies in the
+    ego scope, so recommendations link to each other (shared/cross edges) and
+    videos that are both a target of one edge and a source of another surface
+    as their own central nodes instead of being pinned to the queried video.
+    """
 
     video_id: str
     in_degree: int = 0
@@ -44,6 +52,8 @@ class VideoNetworkContext:
     pagerank: float | None = None
     recommended_by: list[dict[str, Any]] = field(default_factory=list)
     recommends: list[dict[str, Any]] = field(default_factory=list)
+    graph_edges: list[dict[str, Any]] = field(default_factory=list)
+    node_channels: dict[str, str] = field(default_factory=dict)
 
 
 class RecommendationGraphService:
@@ -53,23 +63,31 @@ class RecommendationGraphService:
         self._repos = repos
 
     # ------------------------------------------------------------------
-    def build_graph(self, run_id: str | None = None) -> nx.DiGraph:
+    def build_graph(
+        self,
+        run_id: str | None = None,
+        run_ids: list[str] | None = None,
+    ) -> nx.DiGraph:
         """Build a directed graph from observed recommendation edges.
 
-        Pure read: never writes datasets or other state. Researchers who want
-        a materialized graph snapshot call :meth:`persist_graph_as_dataset`
-        explicitly.
+        ``run_id`` (single) or ``run_ids`` (list) scope which collection runs
+        contribute edges; pass neither for the whole corpus. Pure read: never
+        writes datasets or other state.
         """
-        edges = self._repos.recommendations.list_recommendation_edges(run_id=run_id)
+        resolved = run_ids if run_ids is not None else ([run_id] if run_id else None)
+        edges = self._repos.recommendations.list_recommendation_edges_graph(
+            run_ids=resolved
+        )
         graph = nx.DiGraph()
         for edge in edges:
             graph.add_edge(
-                edge.source_video_id,
-                edge.recommended_video_id,
-                position=edge.position,
-                run_id=edge.collection_run_id,
-                title=edge.title,
-                channel_id=edge.channel_id,
+                edge["source_video_id"],
+                edge["recommended_video_id"],
+                position=edge.get("position"),
+                run_id=edge.get("collection_run_id"),
+                title=edge.get("title"),
+                channel_id=edge.get("channel_id"),
+                channel_name=edge.get("channel_name"),
             )
         return graph
 
@@ -151,14 +169,29 @@ class RecommendationGraphService:
 
     # ------------------------------------------------------------------
     def video_context(
-        self, video_id: str, run_id: str | None = None, top_n: int = 50
+        self,
+        video_id: str,
+        run_id: str | None = None,
+        run_ids: list[str] | None = None,
+        top_n: int = 50,
     ) -> VideoNetworkContext:
-        """Ego-network context for one video (who recommends it, whom it recommends)."""
-        graph = self.build_graph(run_id)
+        """Ego-network context for one video (who recommends it, whom it recommends).
+
+        ``run_id`` (single, legacy) or ``run_ids`` (list) scope which collection
+        runs contribute the surrounding edges. Pass neither for the whole corpus.
+        """
+        resolved = run_ids if run_ids is not None else ([run_id] if run_id else None)
+        graph = self.build_graph(run_ids=resolved)
         context = VideoNetworkContext(video_id=video_id)
 
         if graph.number_of_nodes() == 0:
             return context
+
+        node_meta = self._repos.videos.list_video_metadata(list(graph.nodes()))
+        context.node_channels = {
+            vid: (meta.get("channel_id") or "")
+            for vid, meta in node_meta.items()
+        }
 
         # A video may be persisted in the corpus yet have no recommendation
         # edges; ``G.in_degree(v)`` returns an ``InDegreeView`` (not an int)
@@ -169,7 +202,7 @@ class RecommendationGraphService:
 
         # Cache run_type lookups to avoid repeated repo calls
         run_type_cache: dict[str, str | None] = {}
-        
+
         def get_run_type(run_id: str | None) -> str | None:
             if not run_id:
                 return None
@@ -177,6 +210,53 @@ class RecommendationGraphService:
                 run = self._repos.runs.get_run(run_id)
                 run_type_cache[run_id] = run.run_type.value if run else None
             return run_type_cache[run_id]
+
+        # Connected slice: the ego scope is the queried video plus everyone it
+        # recommends and everyone who recommends it. Every edge touching that
+        # scope is kept, so recommendations link to each other (e.g. a video
+        # scraped as a recommendation that itself recommends a sibling appears
+        # as its own node with a cross-edge) instead of a star around the
+        # queried video. Scope comes from the graph (untruncated) so top_n
+        # pagination of the tables never shrinks the rendered network.
+        scope: set[str] = {video_id}
+        for source, _, _ in graph.in_edges(video_id, data=True):
+            scope.add(source)
+        for _, target, _ in graph.out_edges(video_id, data=True):
+            scope.add(target)
+
+        slice_edges: list[dict[str, Any]] = []
+        for source, target, data in graph.edges(data=True):
+            if source not in scope and target not in scope:
+                continue
+            edge_run_id = data.get("run_id")
+            slice_edges.append(
+                {
+                    "source_video_id": source,
+                    "recommended_video_id": target,
+                    "position": data.get("position"),
+                    "run_id": edge_run_id,
+                    "title": data.get("title"),
+                    "run_type": get_run_type(edge_run_id),
+                }
+            )
+        # Deduplicate repeat observations of the same directed pair within the
+        # slice (same feed slot across re-scrapes), keeping the first edge.
+        seen_pairs: set[tuple[Any, ...]] = set()
+        unique_slice_edges: list[dict[str, Any]] = []
+        for edge in slice_edges:
+            key = (
+                edge["source_video_id"],
+                edge["recommended_video_id"],
+                edge["position"],
+                edge["run_id"],
+            )
+            if key in seen_pairs:
+                continue
+            seen_pairs.add(key)
+            unique_slice_edges.append(edge)
+        context.graph_edges = self._by_feed_rank(
+            unique_slice_edges, "recommended_video_id"
+        )
 
         for source, _, data in graph.in_edges(video_id, data=True):
             run_id = data.get("run_id")

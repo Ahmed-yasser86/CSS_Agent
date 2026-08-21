@@ -11,6 +11,7 @@ down mid-extraction, because that could leave a run half-persisted).
 
 from __future__ import annotations
 
+import asyncio
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -78,12 +79,69 @@ class Job:
 class JobManager:
     """Thread-backed job registry. Safe to call from any thread."""
 
-    def __init__(self, max_workers: int = 2) -> None:
+    def __init__(self, max_workers: int = 2, max_run_seconds: int = 3600) -> None:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers, thread_name_prefix="collect"
         )
+        self._max_run_seconds = max_run_seconds
+        self._subscribers: dict[str, list[asyncio.Queue]] = {}
+        self._watchdog_stop = threading.Event()
+        self._watchdog = threading.Thread(
+            target=self._watchdog_loop,
+            name="job-watchdog",
+            daemon=True,
+        )
+        self._watchdog.start()
+
+    # ------------------------------------------------------------------
+    # Streaming (SSE) subscriptions
+    # ------------------------------------------------------------------
+    def subscribe(self, job_id: str, loop: asyncio.AbstractEventLoop) -> asyncio.Queue:
+        """Register an SSE subscriber for a job; returns its event queue.
+
+        The queue receives JSON-serializable job snapshots (``Job.to_dict``)
+        on every state/progress change. Safe to call from the event-loop
+        thread only; worker threads push through ``loop.call_soon_threadsafe``.
+        """
+        queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+        with self._lock:
+            self._subscribers.setdefault(job_id, []).append((queue, loop))
+        # Replay the current state immediately so a late subscriber catches up.
+        job = self._jobs.get(job_id)
+        if job is not None:
+            loop.call_soon_threadsafe(queue.put_nowait, job.to_dict())
+        return queue
+
+    def unsubscribe(self, job_id: str, queue: asyncio.Queue) -> None:
+        """Drop a subscriber's queue (called when the SSE client disconnects)."""
+        with self._lock:
+            subs = self._subscribers.get(job_id)
+            if subs:
+                self._subscribers[job_id] = [
+                    (q, _) for (q, _) in subs if q is not queue
+                ]
+                if not self._subscribers[job_id]:
+                    del self._subscribers[job_id]
+
+    def _notify(self, job: Job) -> None:
+        """Push a snapshot to every subscriber of ``job``.
+
+        Called from any thread; state mutations always happen under
+        ``self._lock`` first, then subscribers are scheduled via
+        ``call_soon_threadsafe`` so asyncio queues are only touched on the
+        loop thread.
+        """
+        snapshot = job.to_dict()
+        with self._lock:
+            subs = list(self._subscribers.get(job.job_id, ()))
+        for queue, loop in subs:
+            try:
+                loop.call_soon_threadsafe(queue.put_nowait, snapshot)
+            except RuntimeError:
+                # Loop is shutting down; drop the dead subscriber.
+                self.unsubscribe(job.job_id, queue)
 
     # ------------------------------------------------------------------
     # Submission / lifecycle
@@ -98,9 +156,39 @@ class JobManager:
         self._executor.submit(self._run, job, fn)
         return job
 
+    def _watchdog_loop(self) -> None:
+        """Force-fail jobs that exceed the run-time cap.
+
+        Extraction workers block on yt-dlp which can stall indefinitely; a job
+        that never returns would otherwise stay ``running`` forever. The
+        watchdog sweeps periodically and fails any job over the cap so the UI
+        always shows a terminal state.
+        """
+        while not self._watchdog_stop.wait(5):
+            now = utcnow()
+            to_notify: list[Job] = []
+            with self._lock:
+                for job in self._jobs.values():
+                    if job.status != JobStatus.RUNNING or job.started_at is None:
+                        continue
+                    elapsed = (now - job.started_at).total_seconds()
+                    if elapsed > self._max_run_seconds:
+                        job.status = JobStatus.FAILED
+                        job.finished_at = now
+                        job.error = (
+                            f"job timed out after {self._max_run_seconds}s of "
+                            "execution (a network call stalled past the cap)"
+                        )
+                        job.message = "job timed out"
+                        to_notify.append(job)
+
+            for job in to_notify:
+                self._notify(job)
+
     def _run(self, job: Job, fn: Callable[[_ProgressSink], Any]) -> None:
         job.status = JobStatus.RUNNING
         job.started_at = utcnow()
+        self._notify(job)
         try:
             result = fn(self._progress_cb(job))
             if job.cancel_requested:
@@ -118,6 +206,7 @@ class JobManager:
                 job.error = str(exc)
         finally:
             job.finished_at = utcnow()
+            self._notify(job)
 
     def cancel(self, job_id: str) -> bool:
         """Request cancellation. True if the job could accept the request."""
@@ -127,8 +216,12 @@ class JobManager:
                 return False
             if job.status in (JobStatus.PENDING, JobStatus.RUNNING):
                 job.cancel_requested = True
-                return True
-            return False
+                accepted = True
+            else:
+                accepted = False
+        if accepted:
+            self._notify(job)
+        return accepted
 
     # ------------------------------------------------------------------
     # Queries
@@ -160,9 +253,11 @@ class JobManager:
             with self._lock:
                 job.progress = snapshot
                 job.message = message
+            self._notify(job)
 
         return _report
 
     def shutdown(self) -> None:
         """Stop accepting work and release the worker pool (non-blocking)."""
+        self._watchdog_stop.set()
         self._executor.shutdown(wait=False, cancel_futures=True)

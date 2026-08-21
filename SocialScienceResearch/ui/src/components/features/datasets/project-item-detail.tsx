@@ -174,7 +174,13 @@ export function ProjectItemDetail({
                   key={sampleId}
                   className="flex items-center justify-between gap-2 rounded bg-muted/30 px-2 py-1"
                 >
-                  <span className="truncate font-mono text-xs">{sampleId}</span>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/samples")}
+                    className="truncate font-mono text-xs text-primary underline-offset-2 hover:underline"
+                  >
+                    {sampleId}
+                  </button>
                   <button
                     type="button"
                     onClick={() =>
@@ -218,9 +224,13 @@ export function ProjectItemDetail({
                   key={datasetId}
                   className="flex items-center justify-between gap-2 rounded bg-muted/30 px-2 py-1"
                 >
-                  <span className="truncate text-xs">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/datasets")}
+                    className="truncate text-xs text-primary underline-offset-2 hover:underline"
+                  >
                     {datasetNames.get(datasetId) ?? datasetId}
-                  </span>
+                  </button>
                   <button
                     type="button"
                     onClick={() =>

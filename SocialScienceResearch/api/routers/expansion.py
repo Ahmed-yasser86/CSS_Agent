@@ -103,13 +103,13 @@ def expansion_scrape_video(request: Request, body: ExpansionScrapeVideoRequest):
 
     Poll ``GET /jobs/{job_id}``; on success the action anchor appears in
     ``GET /network/expansion`` with its auto-created Project.
+
+    The video need not be a deep-enriched ``Video`` row yet - a recommended
+    target that exists only as a graph node is extracted and persisted on the
+    fly by the job, mirroring the scrape-all expansion.
     """
     _require_projection(body.filters.projection)
     service = _service(request)
-    if service._repos.videos.get_video(body.video_id) is None:
-        raise HTTPException(
-            status_code=404, detail=f"Video {body.video_id} not found"
-        )
     jobs = request.app.state.services["jobs"]
     filters = body.filters
 
